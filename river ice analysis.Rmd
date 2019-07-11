@@ -1,0 +1,1211 @@
+---
+title: "001_Import_river_ice_data"
+author: "Xiao Yang"
+date: "6/3/2019"
+output: 
+  html_document: 
+    df_print: tibble
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+require(tidyverse)
+require(foreach)
+```
+
+# Import river ice dataset
+
+```{r}
+dat_dirs = c(
+  "~/Google_Drive/river_ice_era_temp_dataset/",
+  "~/Google_Drive_morphologee1/river_ice_era_temp_dataset/",
+  "~/Google_Drive_yxiao/river_ice_era_temp_dataset/",
+  "~/Google_Drive_morphologee1/river_ice_era_temp_dataset_cs15-25/"
+)
+
+files = dir(path = dat_dirs, full.names = T)
+
+dat = foreach(i = 1:length(files), .combine = "bind_rows") %do% {
+  read_csv(files[i]) %>% 
+    filter(base_count != -9999)
+}
+
+save(dat, file = "outputs/river_ice_era5_temp_raw.RData")
+
+load("outputs/river_ice_era5_temp_raw.RData", verbose = T)
+
+datfil = dat %>% 
+  mutate(
+    nclearpixels = base_count - cloud_and_shadow_count
+    ) %>% 
+  filter(
+    base_count > 0,
+    base_count > cloud_and_shadow_count,
+    !is.na(hillShadow_mean),
+    nclearpixels > 0
+    ) %>% 
+  select(-`system:index`, -`.geo`) %>% 
+  transmute(
+    npixels = base_count,
+    nclearpixels = nclearpixels,
+    LANDSAT_SCENE_ID = LANDSAT_SCENE_ID,
+    CLOUD_COVER = cloudscore,
+    topo_shadow = hillShadow_mean,
+    temp = pre30T2mMean_mean,
+    ice_fraction = snow_ice_count / nclearpixels,
+    cloud_fraction = cloud_and_shadow_count / base_count,
+    PATH = as.integer(substr(LANDSAT_SCENE_ID, start = 4, stop = 6)),
+    ROW = as.integer(substr(LANDSAT_SCENE_ID, start = 7, stop = 9)),
+    ice = ice_fraction >= 0.5,
+    year = as.integer(substr(LANDSAT_SCENE_ID, start = 10, stop = 13)),
+    doy = as.integer(substr(LANDSAT_SCENE_ID, start = 14, stop = 16)),
+    date = as.Date(doy - 1, origin = paste0(year, "-01-01")),
+    period = factor(doy <= 30 | doy >= 210, levels = c(TRUE, FALSE), labels = c("Freeze-up", "Breakup"))
+    )
+
+require(lubridate)
+datfil = datfil %>% 
+  mutate(month = month(date)) %>% 
+  filter(
+    nclearpixels >= 333,
+    topo_shadow >= 0.95,
+    cloud_fraction <= 0.25
+    )
+
+save(datfil, file = "outputs/river_ice_era_temp.RData")
+
+load("outputs/river_ice_era_temp.RData", verbose = T)
+
+
+# filterEffect = datfil %>% 
+#   # sample_frac(0.1) %>% 
+#   ggplot() + 
+#   geom_point(aes(x = temp, y = ice_fraction, color = "all data"), alpha = 0.3, size = 0.2) +
+#   geom_point(data = datfil %>% filter(cloud_fraction <= 0.05), aes(x = temp, y = ice_fraction, color = "cloud_fraction <= 0.05"), alpha = 0.2, size = 0.2) +
+#   geom_point(data = datfil %>% filter(cloud_fraction <= 0.05, topo_shadow >= 0.95), aes(x = temp, y = ice_fraction, color = "cloud_fraction <= 0.05, shadow >= 0.95"), alpha = 0.2, size = 0.2) +
+#   geom_point(data = datfil %>% filter(cloud_fraction <= 0.05, topo_shadow >= 0.95, nclearpixels >= 300), aes(x = temp, y = ice_fraction, color = "cloud_fraction <= 0.05, shadow >= 0.95, nclearpixels >= 300"), alpha = 0.2, size = 0.2) +
+#   labs(x = "Temperature",
+#        y = "Ice fraction",
+#        color = "Filters applied") +
+#   theme(legend.position = "bottom", 
+#         legend.direction = "vertical")
+# 
+# filterEffect
+# 
+# filterEffect %>% 
+#   ggsave(filename = "figs/filterEffect.png",
+#          width = 6,
+#          height = 6)
+```
+
+
+# Climatology
+
+## calculate map of winter river ice distribution
+
+```{r}
+season_table = tibble(
+  month = month.abb,
+  season = c(rep("Winter", 2), rep("Spring", 3), rep("Summer", 3), rep("Fall", 3), "Winter")
+)
+
+load("outputs/wrs_with_centroid.RData", verbose = T)
+load("outputs/world_robinson.RData")
+load("outputs/wrs_in_world_robinson.RData")
+
+calculate_map_bounds_robinson = function(minlat = -55, maxlat = 80) {
+  load("outputs/wrs_with_centroid.RData")
+  latlon = wrs_lonlat %>% 
+    filter(lat >= minlat, lat <= maxlat) %>% 
+    st_transform(54030) %>% 
+    st_coordinates()
+  
+  xymin = latlon[, 1:2] %>% apply(2, min)
+  xymax = latlon[, 1:2] %>% apply(2, max)
+  
+  return(list(xymin = xymin, xymax = xymax))
+}
+
+winter_mean_sf = datfil %>% 
+  mutate(
+    month = month.abb[month(date)]
+    ) %>% 
+  left_join(season_table) %>% 
+  left_join(wrs_lonlat %>% as.data.frame() %>% select(-geometry)) %>% 
+  filter((season == "Winter" & lat >= 0) | (season == "Summer" & lat < 0)) %>% 
+  group_by(PATH, ROW) %>% 
+  summarise(
+    mean_ice_fraction = mean(ice_fraction),
+    median_ice_fraction = median(ice_fraction)) %>% 
+  ungroup() %>% 
+  left_join(wrs_in_world_robinson, by = c("PATH", "ROW")) %>% 
+  st_as_sf()
+
+xylim_robinson = calculate_map_bounds_robinson()
+xymin = xylim_robinson[[1]]
+xymax = xylim_robinson[[2]]
+
+winter_mean_map = winter_mean_sf %>% 
+  ggplot() +
+  geom_sf(data = world_robinson, fill = "black", color = NA) +
+  geom_sf(aes(fill = mean_ice_fraction * 100), color = NA) +
+  geom_sf(data = world_robinson, fill = NA, color = "black", size = 0.1) +
+  coord_sf(crs = st_crs(54030), 
+           xlim = c(xymin[1], xymax[1]), 
+           ylim = c(xymin[2], xymax[2]),
+           expand = T) +
+  labs(fill = "River ice extent (length percentage)") +
+  scale_fill_gradientn(
+    colors = c("brown", "white", "cyan"),
+    limits = c(0, 100),
+    guide = guide_colorbar(
+      direction = "horizontal",
+      nbin = 10,
+      draw.ulim = FALSE, 
+      draw.llim = FALSE,
+      title.position = "top",
+      title.hjust = 0,
+      barheight = unit(2, units = "mm"),
+      barwidth = unit(50, units = "mm")
+      )) +
+  theme(axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        line = element_blank(),
+        rect = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.65, 0.090),
+        panel.grid.major = element_line(color = "white", size = 0),
+        text = element_text(size = 8))
+
+winter_mean_map
+
+winter_mean_map %>% 
+  ggsave(filename = "figs/river_ice_winter_mean.pdf",
+         device = "pdf",
+         width = 6,
+         height = 3,
+         colormode = "rgb")
+
+winter_mean_map %>% 
+  ggsave(filename = "figs/river_ice_winter_mean.png",
+         device = "png",
+         width = 6,
+         height = 3,
+         dpi = "print")
+```
+
+## calculate monthly river ice stats
+
+```{r}
+require(lubridate)
+require(sf)
+
+monthly_ice = datfil %>% 
+  mutate(month = month(date)) %>% 
+  group_by(PATH, ROW, month) %>% 
+  summarise(mean_ice_fraction = mean(ice_fraction),
+            n = n(),
+            ntotalpixels = sum(npixels)) %>% 
+  ungroup()
+
+load("outputs/wrs_in_world_robinson.RData", verbose = T)
+load("outputs/world_robinson.RData", verbose = T)
+
+monthly_ice_sf = monthly_ice %>% 
+  inner_join(wrs_in_world_robinson %>% select(PATH, ROW)) %>% 
+  st_as_sf
+
+# for (i in 1:12) {
+#   monthly_fig = monthly_ice_sf %>% 
+#     filter(month == i) %>% 
+#     ggplot() +
+#     geom_sf(data = world_robinson, fill = "black", color = "black", lwd = 0.2) +
+#     geom_sf(aes(fill = mean_ice_fraction * 100), color = NA) +
+#     labs(title = month.name[i],
+#          fill = "Ice extent (%)") +
+#     theme(
+#       legend.position = "bottom"
+#     ) +
+#     scale_fill_gradient2(
+#       low = "brown", 
+#       mid = "white", 
+#       high = "cyan", 
+#       midpoint = 50,
+#       guide = guide_colorbar(
+#         limits = c(0, 100),
+#         title.position = "top"
+#       ))
+#   
+#   monthly_fig %>% 
+#     ggsave(
+#       filename = paste0("figs/monthly_figs/", sprintf("%02d", i), ".png"),
+#       width = 5,
+#       height = 4,
+#       dpi = "print"
+#     )
+# }
+
+
+## monthly stats for northern hemisphere
+load("outputs/wrs_with_centroid.RData", verbose = T)
+monthly_ice_nh = monthly_ice %>% 
+  inner_join(wrs_lonlat %>% filter(lat >= 0) %>% as.data.frame() %>% select(PATH, ROW))
+
+ntiles = monthly_ice_nh %>% 
+  select(PATH, ROW) %>% 
+  distinct() %>% 
+  nrow()
+# N = 7568214 # calculated from the total pixels in the asset: users/eeProject/GRWL_JRC_occGte90_widthGte90_chn1_lake0
+
+monthly_stats = monthly_ice_nh %>% 
+  group_by(month) %>% 
+  summarise(
+    mean_ice_fraction = weighted.mean(mean_ice_fraction, w = ntotalpixels),
+    observed_percent = n() / ntiles
+    ) %>% 
+  ungroup()
+
+monthly_stats_fig = monthly_stats %>% 
+  mutate(month = factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot() +
+  geom_col(aes(x = month, y = mean_ice_fraction * 100), fill = "cyan") +
+  # geom_point(aes(x = month, y = observed_percent * 100), color = "red") +
+  geom_text(aes(x = month, y = mean_ice_fraction * 100, label = paste0(format(mean_ice_fraction * 100, digits = 1, hjust = 0), " (", format(observed_percent * 100, digits = 0), "%)"), angle = 90, hjust = 0), nudge_x = 0, nudge_y = 1.5, size = 2.5, color = "black") +
+  geom_text(aes(x = month, y = 0, label = month.abb, fontface = "bold", angle = 90, hjust = 1), nudge_x = 0, nudge_y = -2.5, size = 2.5, color = "black") +
+  ylim(-13, 100) +
+  labs(
+    x = "",
+    y = "NH river ice coverage\n(percentage of river network)"
+  ) +
+  theme_void() +
+  theme(legend.position = "bottom", 
+        legend.title = element_text(size = 8), 
+        legend.margin = margin(rep(0, 4)), 
+        legend.text = element_text(size = 8))
+  
+monthly_stats_fig
+
+monthly_stats_fig %>% 
+  ggsave(filename = "figs/nh_monthly_river_ice_extent.pdf",
+         width = 1.5,
+         height = 1.5, 
+         dpi = "print",
+         colormode = "rgb")
+```
+
+
+# Changes
+
+## test trend analysis
+
+```{r}
+interval_year_mth = function(sdate, edate) {
+  # sdate = as.Date(paste(sy, sm, "01", sep = "-"))
+  # edate = as.Date(paste(ey, em, "01", sep = "-"))
+  result = tibble(date = seq.Date(from = sdate, to = edate, by = "month"))
+    # transmute(yr = year(date),
+    #           mth = month(date))
+  return(result)
+}
+
+datfil
+
+set.seed(2019)
+sampled_pr = datfil %>% 
+  select(PATH, ROW) %>% 
+  sample_n(1)
+
+dat_tile = datfil %>% 
+  right_join(sampled_pr) %>% 
+  mutate(yr = year(date),
+         mth = month) %>% 
+  group_by(yr, mth) %>% 
+  summarise(monthly_ice_fraction = median(ice_fraction)) %>% 
+  ungroup %>% 
+  mutate(date = as.Date(paste(yr, mth, "01", sep = "-"))) %>% 
+  right_join(interval_year_mth(min(.$date), max(.$date))) %>% 
+  arrange(date) %>% 
+  mutate(mth = month(date),
+         yr = year(date))
+
+dat_tile_one_month = dat_tile %>% 
+  filter(mth == 3)
+
+ts_obj = ts(dat_tile_one_month$monthly_ice_fraction, frequency = 1, start = c(min(dat_tile_one_month$yr), 1))
+
+require(trend)
+
+plot(ts_obj, type = "p")
+
+summary(MannKendall(ts_obj))
+```
+
+
+## calculate changes in river ice
+
+```{r}
+river_stats_history = datfil %>% 
+  filter(date <= "1994-03-16" | date >= "2008-12-31") %>% 
+  mutate(decade = factor(date <= "2005-01-01", levels = c(TRUE, FALSE), labels = c("1984-1994", "2008-2018")))
+
+## exclude the yellow river tiles from the analysis
+load("outputs/yriver_tiles.RData", verbose = T)
+river_stats_history = river_stats_history %>%
+  left_join(yriver_tiles) %>%
+  filter(is.na(rn))
+
+load("outputs/gridm.RData", verbose = T)
+load("outputs/wrs2grid.RData", verbose = T)
+
+common_pr_monthly = river_stats_history %>% 
+  mutate(month = month(date)) %>% 
+  inner_join(wrs2grid %>% select(grid_index = index, PATH, ROW)) %>% 
+  group_by(month, grid_index) %>% 
+  do({
+    dat = .
+    n1 = nrow(dat %>% dplyr::filter(decade == "1984-1994"))
+    n2 = nrow(dat %>% dplyr::filter(decade == "2008-2018"))
+    tibble(n1 = n1, n2 = n2)
+  }) %>% 
+  ungroup()
+
+common_pr_monthly %>% 
+  gather(key = "decade", value = "nobs", -c(month, grid_index)) %>% 
+  mutate(month = factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot() +
+  geom_histogram(aes(nobs, fill = month), position = "stack", binwidth = 5) +
+  facet_wrap(~decade)
+
+## number of grids in each months that have at least 5 obs for each decade
+common_pr_monthly %>% filter(n1 >= 5, n2 >= 5) %>% ggplot() + geom_bar(aes(x = month))
+
+rif_diff = river_stats_history %>% 
+  left_join(wrs2grid %>% select(grid_index = index, PATH, ROW)) %>% 
+  right_join(common_pr_monthly %>% filter(n1 >= 5, n2 >= 5)) %>% 
+  group_by(month, grid_index) %>% 
+  do({
+    dat = .
+    dat1 = dat %>% filter(decade == "1984-1994")
+    dat2 = dat %>% filter(decade == "2008-2018")
+    rif1 = dat1$ice_fraction
+    rif2 = dat2$ice_fraction
+    tibble(
+      rif_diff = median(rif2) - median(rif1),
+      n1 = dat1 %>% select(PATH, ROW) %>% distinct() %>% nrow(),
+      n2 = dat2 %>% select(PATH, ROW) %>% distinct() %>% nrow(),)
+  }) %>% 
+  ungroup()
+```
+
+## calculate map of river ice change
+
+```{r}
+require(sf)
+xylim_robinson = calculate_map_bounds_robinson()
+xymin = xylim_robinson[[1]]
+xymax = xylim_robinson[[2]]
+
+load("outputs/world_robinson.RData", verbose = T)
+gridm_rb = gridm %>% 
+  st_transform(54030) %>% 
+  st_intersection(world_robinson)
+
+temp = rif_diff %>% 
+  group_by(grid_index) %>% 
+  summarise(mdif = mean(rif_diff),
+            ntiles1 = sum(n1),
+            ntiles2 = sum(n2),
+            nmonths = n()) %>% 
+  ungroup() %>% 
+  left_join(gridm_rb %>% select(grid_index)) %>% 
+  rename(geometry = g) %>% 
+  st_as_sf
+
+require(scales)
+river_ice_diff = temp %>% 
+  ggplot() +
+  geom_sf(data = world_robinson, fill = "black", color = NA) +
+  geom_sf(aes(fill = mdif * 100), color = NA) +
+  geom_sf(data = world_robinson, fill = NA, color = "black", size = 0.1) +
+  coord_sf(crs = st_crs(54030), 
+           xlim = c(xymin[1], xymax[1]), 
+           ylim = c(xymin[2], xymax[2]),
+           expand = T) +
+  labs(fill = "River ice extent change \n(percentage point)") +
+  scale_fill_gradient2(
+    low = "red", high = "blue", mid = "grey", midpoint = 0,
+    limits = c(-20, 20),
+    guide = guide_colorbar(
+      direction = "horizontal",
+      nbin = 10,
+      draw.ulim = FALSE, 
+      draw.llim = FALSE,
+      title.position = "top",
+      title.hjust = 0,
+      barheight = unit(2, units = "mm"),
+      barwidth = unit(50, units = "mm")
+      ), oob = squish) +
+  theme(axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        line = element_blank(),
+        rect = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = c(0.65, 0.080),
+        panel.grid.major = element_line(color = "white", size = 0),
+        text = element_text(size = 8))
+
+river_ice_diff
+
+river_ice_diff %>% 
+  ggsave(filename = "figs/changes_in_median_historical_river_ice.pdf",
+         device = "pdf",
+         width = 6,
+         height = 3, colormode = "rgb")
+```
+
+## monthly difference calculated based on 55 grid
+
+```{r}
+load("outputs/gridm.RData", verbose = T)
+grid_nh = gridm %>% 
+  filter(grid_ctr_lat >= 0)
+
+ngrids = rif_diff %>% 
+  inner_join(
+    grid_nh %>% as.data.frame %>% select(grid_index), by = "grid_index"
+    ) %>% 
+  select(grid_index) %>% 
+  distinct() %>% 
+  nrow()
+
+monthly_change = rif_diff %>% 
+  inner_join(
+    grid_nh %>% as.data.frame %>% select(grid_index), by = "grid_index"
+    ) %>% 
+  group_by(month) %>% 
+  summarise(ice_fraction_diff = mean(rif_diff),
+            observed_percent = n() / ngrids) %>% 
+  ungroup()
+
+decadal_change_monthly_obs_bar = monthly_change %>% 
+  mutate(month = factor(month, levels = 1:12, labels = month.abb)) %>% 
+  ggplot() +
+  geom_col(aes(x = month, y = ice_fraction_diff * 100), fill = "red") +
+  geom_text(aes(x = month, y = ice_fraction_diff * 100, label = paste0(format(ice_fraction_diff * 100, digits = 1, hjust = 0), " (", format(observed_percent * 100, digits = 0), "%)"), angle = -90), nudge_x = 0, nudge_y = -1.5, size = 2.5, color = "black") +
+  geom_text(aes(x = month, y = 0, label = month.abb, fontface = "bold", angle = -90, hjust = 1), nudge_x = 0, nudge_y = 0.2, size = 2.5, color = "black") +
+  scale_x_discrete(limits = rev(month.abb)) +
+  ylim(-6.5, 0.8) +
+  labs(
+    x = "",
+    y = "Decadal river ice change\n(percentage point)",
+    fill = "Potion of river networks\nunder comparison:") +
+  theme_void() +
+  theme(legend.position = "bottom", 
+        legend.title = element_text(size = 8), 
+        legend.margin = margin(rep(0, 4)), 
+        legend.text = element_text(size = 8))
+
+decadal_change_monthly_obs_bar
+
+decadal_change_monthly_obs_bar %>% 
+  ggsave(filename = "figs/decadal_change_monthly_obs_bar.pdf",
+         width = 1.5,
+         height = 1.5, 
+         dpi = "print",
+         colormode = "rgb")
+```
+
+## Image availability two decades
+
+```{r}
+xylim_robinson = calculate_map_bounds_robinson()
+xymin = xylim_robinson[[1]]
+xymax = xylim_robinson[[2]]
+
+allpr = river_stats_history %>% 
+  select(PATH, ROW) %>% 
+  distinct()
+
+allpr = allpr %>% 
+  mutate(decade = FALSE) %>% 
+  bind_rows(allpr %>% 
+              mutate(decade = TRUE)) %>% 
+  mutate(decade = factor(decade, levels = c(FALSE, TRUE), labels = c("1984-1994", "2008-2018")))
+
+allpr_sf = allpr %>% 
+  left_join(wrs_in_world_robinson %>% select(PATH, ROW), by = c("PATH", "ROW")) %>% 
+  st_as_sf
+
+image_availability_map = river_stats_history %>% 
+  group_by(PATH, ROW, decade) %>% 
+  count %>% 
+  ungroup %>% 
+  right_join(allpr_sf, by = c("PATH", "ROW", "decade")) %>% 
+  st_as_sf %>% 
+  ggplot() +
+  geom_sf(data = world_robinson, fill = "black", color = NA) +
+  geom_sf(aes(fill = n), color = NA) +
+  geom_sf(data = world_robinson, fill = NA, color = "black", size = 0.1) +
+  coord_sf(crs = st_crs(54030), 
+         xlim = c(xymin[1], xymax[1]), 
+         ylim = c(xymin[2], xymax[2]),
+         expand = T) +
+  facet_wrap(~decade, ncol = 1) +
+  scale_fill_viridis_c(
+    limits = c(0, 180),
+    guide = guide_colorbar(
+      direction = "horizontal",
+      nbin = 10,
+      draw.ulim = FALSE, 
+      draw.llim = FALSE,
+      title.position = "top",
+      title.hjust = 0.5,
+      barheight = unit(2, units = "mm"),
+      barwidth = unit(60, units = "mm")
+      )
+  ) +
+  labs(fill = "Number of images") +
+  theme(axis.text.y = element_blank(),
+      axis.text.x = element_blank(),
+      line = element_blank(),
+      rect = element_blank(),
+      panel.grid = element_blank(),
+      legend.position = "bottom",
+      panel.grid.major = element_line(color = "white", size = 0),
+      text = element_text(size = 8))
+
+image_availability_map
+
+image_availability_map %>%
+  ggsave(filename = "figs/image_availability_map.png",
+         width = 5,
+         height = 5.5,
+         dpi = "print")
+```
+
+## Monthly image availability—two decades side-by-side
+
+This map shows the spatial distribution of data that went into the monthly change calculation. Only the tiles that have at least three images in both decades were included in the calculation.
+
+```{r}
+xylim_robinson = calculate_map_bounds_robinson()
+xymin = xylim_robinson[[1]]
+xymax = xylim_robinson[[2]]
+
+allpr = river_stats_history %>% 
+  select(PATH, ROW) %>% 
+  distinct() %>% 
+  group_by(PATH, ROW) %>% 
+  do({
+    dat = .
+    tmp = tibble(PATH = dat$PATH,
+           ROW = dat$ROW,
+           month = 1:12)
+    tmp %>% 
+      mutate(decade = FALSE) %>% 
+      bind_rows(tmp %>% 
+                  mutate(decade = TRUE)) %>% 
+      mutate(decade = factor(decade, levels = c(FALSE, TRUE), labels = c("1984-1994", "2008-2018")))
+  }) %>% 
+  ungroup() %>% 
+  mutate(month = factor(month, levels = 1:12, labels = month.abb))
+
+allpr_sf = allpr %>% 
+  left_join(wrs_in_world_robinson %>% select(PATH, ROW), by = c("PATH", "ROW")) %>% 
+  st_as_sf
+
+monthly_image_availability_map = river_stats_history %>% 
+  mutate(month = factor(month, levels = 1:12, labels = month.abb)) %>% 
+  group_by(PATH, ROW, decade, month) %>% 
+  count %>% 
+  ungroup %>% 
+  mutate(gte3 = n >= 3) %>% 
+  right_join(allpr_sf, by = c("PATH", "ROW", "decade", "month")) %>% 
+  mutate(gte3cat = factor(gte3, levels = c(TRUE, FALSE, NA), 
+                          labels = c(expression(n >= 3), expression(n < 3), "No data"), exclude = NULL)) %>% 
+  # filter(month %in% c("Jan")) %>%
+  st_as_sf() %>% 
+  ggplot() +
+  geom_sf(data = world_robinson, fill = "black", color = NA) +
+  geom_sf(aes(fill = gte3cat), color = NA) +
+  geom_sf(data = world_robinson, fill = NA, color = "black", size = 0.1) +
+  coord_sf(crs = st_crs(54030), 
+         xlim = c(xymin[1], xymax[1]), 
+         ylim = c(xymin[2], xymax[2]),
+         expand = T) +
+  scale_fill_manual(
+    values = c("green", "yellow", "red"),
+    guide = guide_legend(
+      direction = "vertical",
+      title.position = "top",
+      title.hjust = 0
+      )
+  ) +
+  facet_grid(rows = month~decade) +
+  labs(fill = "No. of images") +
+  theme(axis.text.y = element_blank(),
+      axis.text.x = element_blank(),
+      axis.title = element_blank(),
+      axis.ticks = element_blank(),
+      line = element_blank(),
+      rect = element_blank(),
+      panel.grid = element_blank(),
+      legend.position = "right",
+      panel.grid.major = element_line(color = "white", size = 0),
+      text = element_text(size = 10, face = "bold"))
+
+monthly_image_availability_map
+
+monthly_image_availability_map %>%
+  ggsave(filename = "figs/monthly_image_availability_map_comp_two_decades.png",
+         width = 7.5,
+         height = 11,
+         dpi = "print")
+```
+
+# Models
+
+## global logistic regression model 
+
+```{r}
+model_input_global = datfil %>% mutate(
+  n_ice = floor(nclearpixels * ice_fraction),
+  n_water = nclearpixels - n_ice)
+
+glr1 = glm(cbind(n_ice, n_water) ~ 1 + temp + period, data = model_input_global, family = binomial)
+glr2 = glm(cbind(n_ice, n_water) ~ 1 + temp + temp:period, data = model_input_global, family = binomial)
+glr3 = glm(cbind(n_ice, n_water) ~ 1 + temp, data = model_input_global, family = binomial)
+
+newData = tibble(temp = seq(-40, 40, by = 1), period = "Breakup") %>% 
+  bind_rows(tibble(temp = seq(-40, 40, by = 1), period = "Freeze-up"))
+
+pred1 = newData %>% mutate(ice_fraction = predict(glr1, newdata = newData, type = "response", se.fit = F))
+pred2 = newData %>% mutate(ice_fraction = predict(glr2, newdata = newData, type = "response", se.fit = F))
+pred3 = newData %>% mutate(ice_fraction = predict(glr3, newdata = newData, type = "response", se.fit = F))
+
+
+model_input_global %>% 
+  ggplot() +
+  geom_hex(aes(x = temp, y = ice_fraction, fill = log(..count..))) +
+  geom_line(data = pred2, aes(x = temp, y = ice_fraction, color = period), lwd = 2) +
+  scale_fill_viridis_c()
+```
+
+
+## associate data with basins
+
+```{r}
+load("output/wrs_pr_with_hbID.RData", verbose = T)
+load("output/hydrobasin_hn_pfaf_lvl_3_simplified_0.1.RData", verbose = T)
+require(sf)
+
+dathb = datfil %>% 
+  inner_join(wrs_pr_with_hbID %>% mutate(HYBAS_ID = as.character(HYBAS_ID)))
+  
+ice_affected_basins = dathb %>% 
+  group_by(HYBAS_ID) %>% 
+  summarise(q95 = quantile(ice_fraction, probs = 0.95),
+            nobs = n()) %>% 
+  ungroup() %>% 
+  filter(q95 >= 0.5) %>% 
+  select(HYBAS_ID, q95, nobs) %>% 
+  inner_join(hb_sim %>% mutate(HYBAS_ID = as.character(HYBAS_ID)), by = "HYBAS_ID") %>% 
+  st_as_sf
+
+remove(hb_sim)
+
+require(mapview)
+mapview::mapView(ice_affected_basins["nobs"])
+```
+
+## create model input (five fold validation)
+
+```{r}
+model_input = dathb %>% 
+  right_join(ice_affected_basins %>% as.data.frame() %>% select(HYBAS_ID)) %>%
+  mutate(n_ice = floor(nclearpixels * ice_fraction),
+         n_water = nclearpixels - n_ice)
+
+save(model_input, file = "output/model_input_era5temp.RData")
+
+load("outputs/model_input_era5temp.RData", verbose = T)
+```
+
+## plot basin wise temp-ice relationship
+
+```{r}
+basin_ids = model_input %>% 
+  select(HYBAS_ID) %>% 
+  distinct() %>% 
+  pull(HYBAS_ID)
+
+for (i in basin_ids) {
+  fig = model_input %>% 
+    filter(HYBAS_ID == i) %>% 
+    select(ice_fraction, temp, period) %>% 
+    ggplot() +
+    geom_point(aes(x = temp, y = ice_fraction), size = 0.5, alpha = 0.7) +
+    geom_smooth(aes(x = temp, y = ice_fraction), method = glm, method.args = list(family = quasibinomial)) +
+    labs(
+      title = i
+    )
+  
+  fig %>% 
+    ggsave(
+      filename = paste("figs/basinwise-ice-temp-relationship/", i, ".png", sep = ""),
+      width = 8,
+      height = 4
+    )
+}
+```
+
+
+
+### 0 deg model
+
+```{r}
+model_metric_0deg = model_input %>% 
+  transmute(
+    nclearpixels = nclearpixels,
+    temp = temp,
+    observed = ice_fraction,
+    predicted = as.integer(temp <= 0),
+    basin_id = HYBAS_ID,
+    period = period,
+    model = "0 degree threshold"
+  )
+```
+
+### global logreg model
+
+```{r}
+gmodel = model_input %>% 
+  glm(cbind(n_ice, n_water) ~ 1 + temp, data = ., family = binomial)
+
+summary(gmodel)
+
+model_metric_global = model_input %>% 
+  transmute(
+    nclearpixels = nclearpixels,
+    temp = temp,
+    observed = ice_fraction,
+    predicted = predict(gmodel, newdata = ., type = "response"),
+    basin_id = HYBAS_ID,
+    period = period,
+    model = "Global logreg model"
+  )
+```
+
+### per basin model
+
+```{r}
+basins = model_input %>% 
+  select(HYBAS_ID) %>% 
+  distinct() %>% 
+  pull()
+
+basin_models = list()
+for (i in 1:length(basins)) {
+  print(i)
+  print(basins[i])
+  basin_input = model_input %>% 
+    filter(
+      HYBAS_ID == basins[i]
+    )
+  basin_models[[i]] = glm(formula = cbind(n_ice, n_water) ~ 1 + temp, data = basin_input, family = binomial)
+  
+  temp = basin_input %>% 
+      transmute(
+        nclearpixels = nclearpixels,
+        temp = temp,
+        observed = ice_fraction,
+        predicted = predict(basin_models[[i]], newdata = ., type = "response"),
+        basin_id = HYBAS_ID,
+        period = period,
+        model = "Basin logreg models"
+        )
+  
+  temp1 = tibble(
+    HYBAS_ID = basins[i],
+    basin_inter = basin_models[[i]]$coefficients[1],
+    basin_slope = basin_models[[i]]$coefficients[2])
+  
+  if (i == 1) {
+    model_metric_basins = temp
+    model_para = temp1
+  } else if (i != 1) {
+    model_metric_basins = bind_rows(model_metric_basins, temp)
+    model_para = bind_rows(model_para, temp1)
+  }
+}
+```
+
+### mixed effect model
+
+```{r}
+require(lme4)
+
+formula = "cbind(n_ice, n_water) ~ 1 + temp + (1 + temp | HYBAS_ID)"
+mem = glmer(formula = formula, data = model_input, family = "binomial", 
+            nAGQ = 0)
+
+summary(mem)
+
+model_metric_mem = model_input %>% 
+  transmute(
+    nclearpixels = nclearpixels,
+    temp = temp,
+    observed = ice_fraction,
+    predicted = predict(mem, newdata = ., type = "response"),
+    basin_id = HYBAS_ID,
+    period = period,
+    model = "Mixed effect model"
+  )
+```
+
+## merged model function
+
+```{r}
+merged_model = function(model_input, model_types) {
+  
+  ## model 1
+  print("building 0 degree threshold model...")
+  model_error = model_input %>% 
+      transmute(
+        nclearpixels = nclearpixels,
+        temp = temp,
+        observed = ice_fraction,
+        predicted = as.integer(temp <= 0),
+        basin_id = HYBAS_ID,
+        period = period,
+        model = "0 degree threshold"
+      )
+  
+  ## model 2
+  print("building Global logreg model...")
+  gmodel = model_input %>% 
+    glm(cbind(n_ice, n_water) ~ 1 + temp + period, data = ., family = binomial)
+  
+  model_metric_global = model_input %>% 
+    transmute(
+      nclearpixels = nclearpixels,
+      temp = temp,
+      observed = ice_fraction,
+      predicted = predict(gmodel, newdata = ., type = "response"),
+      basin_id = HYBAS_ID,
+      period = period,
+      model = "Global logreg model"
+    )
+  
+  model_error = model_error %>% 
+    bind_rows(model_metric_global)
+  
+  ## model 3
+  print("building Basin logreg models...")
+  basins = model_input %>% 
+    select(HYBAS_ID) %>% 
+    distinct() %>% 
+    pull()
+  
+  basin_models = list()
+  for (i in 1:length(basins)) {
+    print(i)
+    print(basins[i])
+    basin_input = model_input %>% 
+      filter(
+        HYBAS_ID == basins[i]
+      )
+    basin_models[[i]] = glm(formula = cbind(n_ice, n_water) ~ 1 + temp + period, data = basin_input, family = binomial)
+    temp = basin_input %>% 
+        transmute(
+          nclearpixels = nclearpixels,
+          temp = temp,
+          observed = ice_fraction,
+          predicted = predict(basin_models[[i]], newdata = ., type = "response"),
+          basin_id = HYBAS_ID,
+          period = period,
+          model = "Basin logreg models"
+          )
+    if (i == 1) {
+      model_metric_basins = temp
+    } else if (i != 1) {
+      model_metric_basins = bind_rows(model_metric_basins, temp)
+    }
+  }
+  
+  model_error = model_error %>% 
+    bind_rows(model_metric_basins)
+  
+  ## model 4
+  print("building Mixed effect model...")
+  formula = "cbind(n_ice, n_water) ~ 1 + temp + temp:period + (1 + temp | HYBAS_ID)"
+  mem = glmer(formula = formula, data = model_input, family = "binomial", 
+              nAGQ = 0)
+  
+  model_metric_mem = model_input %>% 
+    transmute(
+      nclearpixels = nclearpixels,
+      temp = temp,
+      observed = ice_fraction,
+      predicted = predict(mem, newdata = ., type = "response"),
+      basin_id = HYBAS_ID,
+      period = period,
+      model = "Mixed effect model"
+    )
+  
+  model_error = model_error %>% 
+    bind_rows(model_metric_mem)
+  
+  ## output result 
+  return(model_error)
+}
+
+test = merged_model(model_input)
+```
+
+
+## comparing model error metrics
+
+```{r}
+common_basins = model_metric_mem %>% select(basin_id) %>% distinct() %>% 
+  inner_join(model_metric_basins %>% select(basin_id) %>% distinct(), by = "basin_id") %>% 
+  inner_join(model_metric_global %>% select(basin_id) %>% distinct(), by = "basin_id") %>% 
+  inner_join(model_metric_0deg %>% select(basin_id) %>% distinct(), by = "basin_id") %>% 
+  distinct()
+
+model_metric = bind_rows(
+  model_metric_0deg,
+  model_metric_global,
+  model_metric_basins,
+  model_metric_mem
+) %>% 
+  right_join(common_basins)
+
+errors = model_metric %>% 
+  mutate(
+    temp_grp = cut(temp, breaks = seq(-48, 42, by = 1), include.lowest = T),
+    res = predicted - observed
+    ) %>% 
+  group_by(temp_grp, model) %>% 
+  summarise(
+    mae = weighted.mean(abs(res), w = nclearpixels),
+    mbs = weighted.mean(res, w = nclearpixels),
+    rmse = sqrt(weighted.mean(res^2, w = nclearpixels^2)),
+    temp_mean = mean(temp)
+  ) %>% 
+  ungroup()
+
+errors = errors %>% 
+  gather(key = "metric", value = "error", -c(temp_mean, model, temp_grp))
+
+errors %>% 
+  group_by(metric, model) %>% 
+  summarise(max_value = max(error),
+            min_value = min(error)) %>% 
+  ungroup() %>% 
+  arrange(metric, max_value)
+
+errors_fig = errors %>% 
+  ggplot() +
+  geom_line(aes(x = temp_mean, y = error * 100, color = model), alpha = 1) +
+  facet_wrap(~metric) +
+  ylim(-40, 100) +
+  labs(
+    x = "Temperature",
+    y = "Error (percentage point)",
+    color = "Models"
+  )
+
+errors_fig
+
+errors_fig %>% 
+  ggsave(
+    filename = "figs/errors_fig.png",
+    width = 5,
+    height = 4
+  )
+
+
+errors_overall = model_metric %>% 
+  filter(temp >= -10, temp <= 10) %>% 
+  mutate(
+    res = predicted - observed
+    ) %>% 
+  group_by(model) %>% 
+  summarise(
+    mae = weighted.mean(abs(res), w = nclearpixels),
+    mbs = weighted.mean(res, w = nclearpixels),
+    rmse = sqrt(weighted.mean(res^2, w = nclearpixels^2))
+  ) %>% 
+  ungroup()
+
+errors_overall %>% 
+  gather(key = "metric", value = "error", -model) %>% 
+  group_by(metric) %>% 
+  arrange(error) %>% 
+  ungroup() %>% 
+  ggplot() +
+  geom_bar(aes(x = metric, y = error, fill = model), stat = "identity", position = "dodge", color = "black") +
+  theme_classic()
+
+```
+
+## export model parameters
+
+```{r}
+randomEffect = lme4::ranef(mem, which = "HYBAS_ID", condVar = TRUE)
+
+lattice::dotplot(randomEffect)
+
+randomEffect_tbl = tibble(ranef_intercept = randomEffect[[1]]$`(Intercept)`,
+                          ranef_temp = randomEffect[[1]]$temp,
+                          HYBAS_ID = row.names(randomEffect[[1]]))
+
+load("output/hydrobasin_hn_pfaf_lvl_3_simplified_0.1.RData", verbose = T)
+hb = hb_sim %>% 
+  mutate(HYBAS_ID = as.character(HYBAS_ID))
+
+basinwise_random_effect = randomEffect_tbl %>% 
+  inner_join(hb %>% select(HYBAS_ID), by = "HYBAS_ID") %>% 
+  st_as_sf
+
+# export shp file to be imported into GEE
+global_slope = -0.37612
+global_intercept = -1.28557
+
+export = basinwise_random_effect %>% 
+  transmute(
+    intcpt = ranef_intercept + global_intercept,
+    temp = ranef_temp + global_slope, 
+    HYBAS_ID = HYBAS_ID) %>% 
+  st_as_sf() %>% 
+  st_simplify(preserveTopology = T, dTolerance = 0.05)
+
+## add parameters for per basin mdoels
+export = model_para %>% 
+  right_join(export)
+
+st_write(export, dsn = "output/basinwise_random_effect_two_models.shp")
+```
+
+## compare modeled month ice extent to Landsat derived value
+
+```{r}
+load("outputs/model_input_era5temp.RData", verbose = T)
+load("outputs/river_ice_era_temp.RData", verbose = T)
+require(lubridate)
+require(sf)
+
+datfil_tropical = datfil %>% 
+  inner_join(wrs_lonlat %>% filter(lat >= 0, lat <= 23.5) %>% as.data.frame() %>% select(PATH, ROW))
+
+modeled_ice = model_input %>% 
+  mutate(ice_fraction_mem = predict(mem, newdata = ., type = "response")) %>% 
+  select(-HYBAS_ID, -n_ice, -n_water) %>% 
+  bind_rows(datfil_tropical %>% 
+              mutate(ice_fraction_mem = 0))
+
+datfil = datfil %>% 
+  inner_join(modeled_ice %>% select(LANDSAT_SCENE_ID, ice_fraction_mem), by = "LANDSAT_SCENE_ID")
+
+datfil = datfil %>% 
+  select(month, PATH, ROW, npixels, ice_fraction, ice_fraction_mem, date) %>% 
+  gather(key = "source", value = "ice_fraction", -c(month, PATH, ROW, npixels, date))
+
+monthly_ice = datfil %>% 
+  mutate(month = month(date)) %>% 
+  group_by(PATH, ROW, month, source) %>% 
+  summarise(
+    mean_ice_fraction = mean(ice_fraction),
+    rif_quantile10 = quantile(ice_fraction, probs = 0.1),
+    rif_quantile90 = quantile(ice_fraction, probs = 0.9),
+    n_image = n(),
+    ntotalpixels = sum(npixels)) %>% 
+  ungroup()
+
+load("outputs/wrs_in_world_robinson.RData", verbose = T)
+load("outputs/world_robinson.RData", verbose = T)
+
+## monthly stats for northern hemisphere
+load("outputs/wrs_with_centroid.RData", verbose = T)
+monthly_ice_nh = monthly_ice %>% 
+  inner_join(wrs_lonlat %>% filter(lat >= 0) %>% as.data.frame() %>% select(PATH, ROW))
+
+ntiles = monthly_ice_nh %>% 
+  select(PATH, ROW) %>% 
+  distinct() %>% 
+  nrow()
+# N = 7568214 # calculated from the total pixels in the asset: users/eeProject/GRWL_JRC_occGte90_widthGte90_chn1_lake0
+
+monthly_stats = monthly_ice_nh %>% 
+  group_by(month, source) %>% 
+  summarise(
+    mean_ice_fraction = weighted.mean(mean_ice_fraction, w = ntotalpixels),
+    rif_quantile10 = weighted.mean(rif_quantile10, w = ntotalpixels),
+    rif_quantile90 = weighted.mean(rif_quantile90, w = ntotalpixels),
+    n_image = sum(n_image),
+    observed_percent = n() / ntiles
+    ) %>% 
+  ungroup()
+
+# diff_rif = (river_stats_monthly_mean %>% transmute(diff = rif_wmean - rif_wmean_modeled))$diff * 100
+# mae = mean(abs(diff_rif))
+# mbs = mean(diff_rif)
+# rmse = sqrt(mean(diff_rif^2))
+
+monthly_stats %>% 
+  ggplot() +
+  geom_errorbar(aes(x = month, ymin = rif_quantile10 * 100, ymax = rif_quantile90 * 100)) +
+  geom_point(aes(x = month, y = mean_ice_fraction * 100, size = n_image, color = source)) +
+  labs(x = "Month",
+       y = "River ice fraction (%)",
+       size = "Number of images")
+```
+
+
+# Prediction
+
+## decide which climate models to use
+
+```{r}
+dat45 = read_csv("data/tempdiffclimatemodel_rcp45.csv") %>% select(-aoi)
+dat85 = read_csv("data/tempdiffclimatemodel_rcp85.csv") %>% select(-aoi)
+
+dat = dat45 %>% 
+  bind_rows(dat85) %>% 
+  select(
+    diff_mean = dailyMeanDiff_mean,
+    diff_median = dailyMeanDiff_median,
+    model,
+    scenario)
+
+dat_mean = dat %>% 
+  select(diff_mean, model, scenario) %>% 
+  spread(scenario, diff_mean)
+
+dat_mean %>% 
+  ggplot() +
+  geom_point(aes(x = rcp45, y = rcp85, color = model))
+
+comp_fig = dat %>% 
+  ggplot() +
+  geom_bar(aes(x = model, y = diff_mean, fill = scenario), stat = "identity", position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Model",
+       y = "Difference in mean surface tempearture",
+       title = "Difference in mean surface tempearture",
+       subtitle = "between 2006-2036 and 2069-2099",
+       fill = "Scenario")
+
+comp_fig %>% 
+  ggsave(
+    filename = "figs/Difference in mean surface tempearture climate models.png",
+    width = 8,
+    height = 4,
+    dpi = "print"
+  )
+```
+
