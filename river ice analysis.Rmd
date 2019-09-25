@@ -78,6 +78,23 @@ datfil = dat %>%
     period = factor(doy <= 30 | doy >= 210, levels = c(TRUE, FALSE), labels = c("Freeze-up", "Breakup"))
     )
 
+load("outputs/wrs_with_centroid.RData", verbose = T)
+
+datfil = datfil %>% 
+  inner_join(wrs_lonlat %>% as.data.frame() %>% select(-geometry), by = c("PATH", "ROW"))
+
+write_csv(datfil %>% select(date, river_ice_fraction = ice_fraction, cloud_fraction, topo_shadow, LANDSAT_SCENE_ID, PATH, ROW, N_river_pixel = npixels, N_clear_river_pixel = nclearpixels) %>% 
+            mutate(PATH = as.integer(PATH),
+                   ROW = as.integer(ROW),
+                   N_river_pixel = as.integer(N_river_pixel),
+                   N_clear_river_pixel = as.integer(N_clear_river_pixel)), path = "outputs/global_river_ice_dataset.csv")
+
+write_csv(datfil %>% select(date, river_ice_fraction = ice_fraction, cloud_fraction, topo_shadow, LANDSAT_SCENE_ID, PATH, ROW, N_river_pixel = npixels, N_clear_river_pixel = nclearpixels) %>% 
+            mutate(PATH = as.integer(PATH),
+                   ROW = as.integer(ROW),
+                   N_river_pixel = as.integer(N_river_pixel),
+                   N_clear_river_pixel = as.integer(N_clear_river_pixel)) %>% sample_n(100), path = "outputs/global_river_ice_dataset_sample.csv")
+
 dat_filterEffect = datfil %>% 
   mutate(month = factor(month(date), levels = 1:12, labels = month.abb)) %>% 
   mutate(valid = (nclearpixels >= 333) & (topo_shadow >= 0.95) & (cloud_fraction <= 0.25))
@@ -92,11 +109,6 @@ datfil = datfil %>%
     topo_shadow >= 0.95,
     cloud_fraction <= 0.25
     )
-
-load("outputs/wrs_with_centroid.RData", verbose = T)
-
-datfil = datfil %>% 
-  inner_join(wrs_lonlat %>% as.data.frame() %>% select(-geometry), by = c("PATH", "ROW"))
 
 save(datfil, file = "outputs/river_ice_era_temp.RData")
 
@@ -279,13 +291,12 @@ for (i in 1:12) {
 load("outputs/grwl_wrs_npixels.RData", verbose = T)
 load("outputs/overlap_area_percentage_row.RData", verbose = T)
 
-monthly_ice_nh = datfil %>% 
-  filter(lat >= 0)
+monthly_ice_global = datfil
 
-all_pr = monthly_ice_nh %>% select(PATH, ROW) %>% distinct
-nh_total_rivern_area = all_pr %>% left_join(wrs_in_world_robinson) %>% st_as_sf %>% st_union() %>% st_area
+all_pr = monthly_ice_global %>% dplyr::select(PATH, ROW) %>% distinct
+global_total_rivern_area = all_pr %>% left_join(wrs_in_world_robinson) %>% st_as_sf %>% st_union() %>% st_area
 
-month_stats = monthly_ice_nh %>% 
+month_stats = monthly_ice_global %>% 
   group_by(month, PATH, ROW) %>% 
   summarise(mrif = mean(ice_fraction),
             ni = n()) %>% 
@@ -301,7 +312,7 @@ month_stats = monthly_ice_nh %>%
     dat = . 
     rif_mean = weighted.mean(dat$mrif, dat$w)
     area_obs = dat %>% st_union() %>% st_area
-    area_total = nh_total_rivern_area
+    area_total = global_total_rivern_area
     tibble(area_obs, area_total, rif_mean)
   }) %>% 
   ungroup() %>% 
@@ -333,7 +344,7 @@ monthly_stats_fig = month_stats %>%
 monthly_stats_fig
 
 monthly_stats_fig %>% 
-  ggsave(filename = "figs/nh_monthly_river_ice_extent.pdf",
+  ggsave(filename = "figs/global_monthly_river_ice_extent.pdf",
          width = 1.5,
          height = 1.5, 
          dpi = "print",
@@ -406,7 +417,7 @@ load("outputs/gridm.RData", verbose = T)
 load("outputs/wrs2grid.RData", verbose = T)
 
 common_pr_monthly = river_stats_history %>% 
-  inner_join(wrs2grid %>% select(grid_index = index, PATH, ROW)) %>% 
+  inner_join(wrs2grid %>% dplyr::select(grid_index = index, PATH, ROW)) %>% 
   group_by(month, grid_index) %>% 
   do({
     dat = .
@@ -426,7 +437,7 @@ common_pr_monthly %>%
 common_pr_monthly %>% filter(n1 >= 5, n2 >= 5) %>% ggplot() + geom_bar(aes(x = month))
 
 rif_diff = river_stats_history %>% 
-  left_join(wrs2grid %>% select(grid_index = index, PATH, ROW)) %>% 
+  left_join(wrs2grid %>% dplyr::select(grid_index = index, PATH, ROW)) %>% 
   right_join(common_pr_monthly %>% filter(n1 >= 5, n2 >= 5)) %>% 
   group_by(month, grid_index) %>% 
   do({
@@ -437,8 +448,8 @@ rif_diff = river_stats_history %>%
     rif2 = dat2$ice_fraction
     tibble(
       rif_diff = median(rif2) - median(rif1),
-      n1 = dat1 %>% select(PATH, ROW) %>% distinct() %>% nrow(),
-      n2 = dat2 %>% select(PATH, ROW) %>% distinct() %>% nrow())
+      n1 = dat1 %>% dplyr::select(PATH, ROW) %>% distinct() %>% nrow(),
+      n2 = dat2 %>% dplyr::select(PATH, ROW) %>% distinct() %>% nrow())
   }) %>% 
   ungroup()
 ```
@@ -608,24 +619,23 @@ allmonth_river_ice_diff = rif_diff_sf %>%
 ```{r}
 load("outputs/gridm.RData", verbose = T)
 
-grid_nh = gridm %>% 
-  filter(grid_ctr_lat >= 0)
+grid_global = gridm
 
-rif_diff_nh = rif_diff %>% 
+rif_diff_global = rif_diff %>% 
   inner_join(
-    grid_nh %>% as.data.frame %>% select(grid_index), by = "grid_index"
+    grid_global %>% as.data.frame %>% dplyr::select(grid_index), by = "grid_index"
     )
 
-allgrids_area = rif_diff_nh %>% 
-  select(grid_index) %>% 
+allgrids_area = rif_diff_global %>% 
+  dplyr::select(grid_index) %>% 
   distinct() %>% 
   left_join(gridm) %>% 
   st_as_sf %>% 
   st_union() %>% 
   st_area
 
-monthly_change = rif_diff_nh %>% 
-  left_join(gridm %>% select(grid_index)) %>% 
+monthly_change = rif_diff_global %>% 
+  left_join(gridm %>% dplyr::select(grid_index)) %>% 
   st_as_sf() %>% 
   group_by(month) %>% 
   do({
@@ -656,13 +666,13 @@ decadal_change_monthly_obs_bar = monthly_change %>%
 decadal_change_monthly_obs_bar
 
 decadal_change_monthly_obs_bar %>% 
-  ggsave(filename = "figs/decadal_change_monthly_obs_bar.pdf",
+  ggsave(filename = "figs/decadal_change_monthly_obs_bar_global.pdf",
          width = 1.5,
          height = 1.5, 
          dpi = "print",
          colormode = "rgb")
 
-summary(monthly_change %>% right_join(tibble(month = month.abb[-(6:8)])))
+summary(monthly_change %>% right_join(tibble(month = month.abb)))
 ```
 
 ## Image availability two decades
@@ -1815,30 +1825,47 @@ comp_fig %>%
 
 ```{r}
 latmin = 0
-extent_coords = rbind(c(-180, latmin), c(180, latmin), c(180, 90), c(-180, 90), c(-180, latmin))
+latmax = 90
+extent_coords = rbind(c(-180, latmin), c(180, latmin), c(180, latmax), c(-180, latmax), c(-180, latmin))
 extentply = st_polygon(list(extent_coords))
-extentsfc = st_sfc(extentply, crs = 4326)
+extentsfc_nh = st_sfc(extentply, crs = 4326)
+
+latmin = -90
+latmax = 0
+extent_coords = rbind(c(-180, latmin), c(180, latmin), c(180, latmax), c(-180, latmax), c(-180, latmin))
+extentply = st_polygon(list(extent_coords))
+extentsfc_sh = st_sfc(extentply, crs = 4326)
 
 world = st_as_sf(maps::map(database = "world", fill = T, plot = F))
 world = world %>% st_buffer(0.0)
 
-world_clipped = world %>% 
-  st_intersection(extentsfc)
+world_clipped_nh = world %>% 
+  st_intersection(extentsfc_nh)
 
-plot(world_clipped)
+world_clipped_sh = world %>% 
+  st_intersection(extentsfc_sh)
 
-st_write(world_clipped, dsn = "~/Google_Drive/predicted_duration_change/world_outline_clipped_final.shp")
+plot(world_clipped_nh)
+plot(world_clipped_sh)
+
+st_write(world_clipped_nh, dsn = "~/Google_Drive/monthly_map_river_ice_future_change_global/world_clipped_nh.shp")
+st_write(world_clipped_sh, dsn = "~/Google_Drive/monthly_map_river_ice_future_change_global/world_clipped_sh.shp")
 ```
 
 ### export shp file for clipping the exported raster global maps to only include GRWL covered land
 
 ```{r}
 latmin = 0
-extent_coords = rbind(c(-180, latmin), c(180, latmin), c(180, 90), c(-180, 90), c(-180, latmin))
+latmax = 90
+extent_coords = rbind(c(-180, latmin), c(180, latmin), c(180, latmax), c(-180, latmax), c(-180, latmin))
 extentply = st_polygon(list(extent_coords))
-extentsfc = st_sfc(extentply, crs = 4326)
+extentsfc_nh = st_sfc(extentply, crs = 4326)
 
-
+latmin = -90
+latmax = 0
+extent_coords = rbind(c(-180, latmin), c(180, latmin), c(180, latmax), c(-180, latmax), c(-180, latmin))
+extentply = st_polygon(list(extent_coords))
+extentsfc_sh = st_sfc(extentply, crs = 4326)
 
 # load("outputs/wrs_in_world_robinson.RData", verbose = T)
 load("outputs/grwl_by_wrstile.RData", verbose = T)
@@ -1854,19 +1881,24 @@ grwlWRS_sf = wrs_in_world %>%
   st_as_sf() %>%
   st_buffer(0.0)
 
-world_clipped = grwlWRS_sf %>% 
+world_clipped_nh = grwlWRS_sf %>% 
   st_union() %>% 
-  st_intersection(extentsfc)
+  st_intersection(extentsfc_nh)
+world_clipped_sh = grwlWRS_sf %>% 
+  st_union() %>% 
+  st_intersection(extentsfc_sh)
 
-plot(world_clipped)
+plot(world_clipped_nh)
+plot(world_clipped_sh)
 
-st_write(world_clipped, dsn = "~/Google_Drive/monthly_map_river_ice_future_change/world_outline_clipped_final_grwl.shp")
+st_write(world_clipped_nh, dsn = "~/Google_Drive/monthly_map_river_ice_future_change_global/world_clipped_grwl_nh.shp")
+st_write(world_clipped_sh, dsn = "~/Google_Drive/monthly_map_river_ice_future_change_global/world_clipped_grwl_sh.shp")
 ```
 
 ### read the geotiff
 
 ```{r}
-dat_dir = "~/Google_Drive/monthly_map_river_ice_future_change/"
+dat_dir = "~/Google_Drive/monthly_map_river_ice_future_change_global/"
 
 filename = dir(dat_dir, pattern = "*.tif")
 filepath = dir(dat_dir, pattern = "*.tif", full.names = T)
@@ -1879,17 +1911,23 @@ fileinfo = tibble(filename, filepath) %>%
     month = (strsplit(filename, split = c("_")) %>% unlist())[(1:N) %% 5 + 1 == 1]
     ) %>% 
   mutate(month = factor(month, levels = paste0(1:12, ".tif"), labels = month.abb)) %>% 
-  mutate(cropped_file_name = paste(model, rcp, month, ".tif", sep = "_"))
+  mutate(
+    cropped_file_name_nh = paste(model, rcp, month, "nh.tif", sep = "_"),
+    cropped_file_name_sh = paste(model, rcp, month, "sh.tif", sep = "_"))
 
 img_dat_monthly = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
   
   require(raster)
   # https://joeyklee.github.io/broc-cli-geo/guide/XX_raster_cropping_and_clipping.html
-  cmdstring = paste("cd ~/Google_Drive/monthly_map_river_ice_future_change/; gdalwarp -dstnodata -1 -cutline world_outline_clipped_final_grwl.shp -crop_to_cutline", fileinfo$filename[i], fileinfo$cropped_file_name[i], sep = " ")
+  cmdstring = paste("cd ~/Google_Drive/monthly_map_river_ice_future_change_global/; gdalwarp -dstnodata -1 -cutline world_clipped_grwl_nh.shp -crop_to_cutline", fileinfo$filename[i], fileinfo$cropped_file_name_nh[i], sep = " ")
   
   system(cmdstring)
   
-  paste0(dat_dir, fileinfo$cropped_file_name[i]) %>% 
+  cmdstring = paste("cd ~/Google_Drive/monthly_map_river_ice_future_change_global/; gdalwarp -dstnodata -1 -cutline world_clipped_grwl_sh.shp -crop_to_cutline", fileinfo$filename[i], fileinfo$cropped_file_name_sh[i], sep = " ")
+  
+  system(cmdstring)
+  
+  t1 = paste0(dat_dir, fileinfo$cropped_file_name_nh[i]) %>% 
     raster(band = 2) %>% 
     projectRaster(crs = "+proj=stere +lat_0=90 +lat_ts=71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs") %>% 
     as(Class = "SpatialPixelsDataFrame") %>% 
@@ -1898,94 +1936,170 @@ img_dat_monthly = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
     mutate(model = fileinfo$model[i],
            rcp = fileinfo$rcp[i],
            month = fileinfo$month[i]) %>% 
-    dplyr::select(x, y, rif, model, rcp, month)
+    dplyr::select(x, y, rif, model, rcp, month) %>% 
+    mutate(hemisphere = "nh")
+  
+  t2 = paste0(dat_dir, fileinfo$cropped_file_name_sh[i]) %>% 
+    raster(band = 2) %>% 
+    projectRaster(crs = "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs") %>% 
+    as(Class = "SpatialPixelsDataFrame") %>% 
+    as_tibble() %>% 
+    mutate(rif = .[, 1] %>% pull) %>% 
+    mutate(model = fileinfo$model[i],
+           rcp = fileinfo$rcp[i],
+           month = fileinfo$month[i]) %>% 
+    dplyr::select(x, y, rif, model, rcp, month) %>% 
+    mutate(hemisphere = "sh")
+  
+  bind_rows(t1, t2)
   
 }
 
-save(img_dat_monthly, file = "outputs/predicted_img_dat_monthly.RData")
+save(img_dat_monthly, file = "outputs/predicted_img_dat_monthly_global.RData")
 
 ```
 
 ### export the figure
 
 ```{r}
+load("outputs/predicted_img_dat_monthly_global.RData", verbose = T)
+
 models = img_dat_monthly %>% dplyr::select(model) %>% distinct() %>% pull
 rcps = img_dat_monthly %>% dplyr::select(rcp) %>% distinct() %>% pull
+ns = img_dat_monthly %>% dplyr::select(hemisphere) %>% distinct() %>% pull
 
-load("predicted_monthly_rif_change.RData", verbose = T)
+load("predicted_monthly_rif_change_NH.RData", verbose = T)
+dat_monthly_rif_nh = dat_monthly_rif
+load("predicted_monthly_rif_change_SH.RData", verbose = T)
 
-dat_monthly_rif = dat_monthly_rif %>% 
+dat_monthly_rif_nh = dat_monthly_rif_nh %>% 
   mutate(perc_change = diff21 / rif1)
 
-xytext = tibble(lon = 180, lat = 35) %>% 
+dat_monthly_rif_sh = dat_monthly_rif_sh %>% 
+  mutate(perc_change = diff21 / rif1)
+
+xytext_nh = tibble(lon = 180, lat = 35) %>% 
   st_as_sf(coords = c("lon", "lat"), crs = 4326) %>% 
   st_transform(3995) %>% 
   st_coordinates()
 
-dat_monthly_rif = dat_monthly_rif %>% 
-  mutate(x = xytext[1], y = xytext[2])
+xytext_sh = tibble(lon = 0, lat = -35) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>% 
+  st_transform(3031) %>% 
+  st_coordinates()
+
+dat_monthly_rif_nh = dat_monthly_rif_nh %>% 
+  mutate(x = xytext_nh[1], y = xytext_nh[2])
+
+dat_monthly_rif_sh = dat_monthly_rif_sh %>% 
+  mutate(x = xytext_sh[1], y = xytext_sh[2])
 
 for (j in 1:length(models)) {
   for (i in 1:length(rcps)) {
+    for (k in 1:length(ns)) {
+      
+      if (ns[k] == "nh") {
+        world_clipped = world_clipped_nh
+        crs = 3995
+        xlim = c(-7e06, 8e06)
+        ylim = c(-6e06, 7e06)
+        stats = dat_monthly_rif_nh %>% 
+          filter(
+            model == models[j],
+            rcp == rcps[i])
+      } else if (ns[k] == "sh") {
+        world_clipped = world_clipped_sh
+        crs = 3031
+        xlim = c(-7.5e6, 7.5e6)
+        ylim = c(-7.5e6, 7.5e6)
+        stats = dat_monthly_rif_sh %>% 
+          filter(
+            model == models[j],
+            rcp == rcps[i])
+      }
+      
+      monthly_diffs = img_dat_monthly %>%   
+        filter(
+          model == models[j],
+          rcp == rcps[i],
+          hemisphere == ns[k]) %>% 
+        # filter(month %in% c("May")) %>%
+        ggplot() +
+        geom_sf(data = world_clipped %>% st_transform(crs = crs), fill = "white", color = NA) +
+        geom_tile(aes(x, y, fill = rif * 100)) +
+        geom_sf(data = world_clipped %>% st_transform(crs = crs), fill = NA, color = "black", lwd = 0.2)  +
+        coord_sf(crs = st_crs(crs), xlim = xlim, ylim = ylim) +
+        facet_wrap(~month) +
+        theme(panel.grid.major = element_line(colour = "white"),
+          axis.title = element_blank(),
+          axis.text.y = element_blank(),
+          axis.text.x = element_blank(),
+          line = element_blank(),
+          rect = element_blank(),
+          panel.grid = element_blank(),
+          legend.position = "bottom",
+          text = element_text(face = "bold", size = 10))
+      
+      if (ns[k] == "nh") {
+        monthly_diffs = monthly_diffs +
+          geom_text(data = stats, aes(x = x, y = y, label = paste0(round(diff21 * 100, digits = 1), " (", round(perc_change * 100, digits = 0), "%)"), fontface = "bold"), size = 8 * 5 / 14, color = "red", hjust = "middle") +
+          scale_fill_gradient2(
+            low = "red",
+            high = "blue",
+            mid = "grey",
+            midpoint = 0,
+            limits = c(-60, 60),
+            guide = guide_colorbar(
+              title = "River ice extent difference\n(percentage point)",
+              direction = "horizontal",
+              nbin = 20,
+              draw.ulim = TRUE,
+              draw.llim = TRUE,
+              title.position = "top",
+              title.hjust = 0.5,
+              barheight = unit(2, units = "mm"),
+              barwidth = unit(50, units = "mm")
+              ),
+            oob = squish)
+      } else if(ns[k] == "sh") {
+        monthly_diffs = monthly_diffs +
+          geom_text(data = stats, aes(x = x, y = y, label = paste0(round(diff21 * 100, digits = 2), "\n(", round(perc_change * 100, digits = 0), "%)"), fontface = "bold"), size = 8 * 5 / 14, color = "red", hjust = "middle") +
+          scale_fill_gradient2(
+            low = "red",
+            high = "blue",
+            mid = "grey",
+            midpoint = 0,
+            limits = c(-15, 15),
+            guide = guide_colorbar(
+              title = "River ice extent difference\n(percentage point)",
+              direction = "horizontal",
+              nbin = 20,
+              draw.ulim = TRUE,
+              draw.llim = TRUE,
+              title.position = "top",
+              title.hjust = 0.5,
+              barheight = unit(2, units = "mm"),
+              barwidth = unit(50, units = "mm")
+              ),
+            oob = squish)
+      }
+      
+      # monthly_diffs
+      
+      monthly_diffs %>%
+        ggsave(filename = paste0("figs/predicted_ice_extent_map_monthly_", models[j], "_", rcps[i], "_", ns[k], ".png"),
+               width = 6,
+               height = 6,
+               dpi = "retina")
+    }
     
-    stats = dat_monthly_rif %>% 
-      filter(
-        model == models[j],
-        rcp == rcps[i])
     
-    monthly_diffs = img_dat_monthly %>%   
-      filter(
-        model == models[j],
-        rcp == rcps[i]) %>% 
-      # filter(month %in% c("May", "June")) %>%
-      ggplot() +
-      geom_sf(data = world_clipped %>% st_transform(crs = 3995), fill = "white", color = NA) +
-      geom_tile(aes(x, y, fill = rif * 100)) +
-      geom_sf(data = world_clipped %>% st_transform(crs = 3995), fill = NA, color = "black", lwd = 0.2) +
-      geom_text(data = stats, aes(x = x, y = y, label = paste0(round(diff21 * 100, digits = 1), " (", round(perc_change * 100, digits = 0), "%)"), fontface = "bold"), size = 8 * 5 / 14, color = "red", hjust = "middle") +
-      coord_sf(crs = st_crs(3995), xlim = c(-7e06, 8e06), ylim = c(-6e06, 7e06)) +
-      scale_fill_gradient2(
-        low = "red",
-        high = "blue",
-        mid = "grey",
-        midpoint = 0,
-        limits = c(-60, 60),
-        guide = guide_colorbar(
-          title = "River ice extent difference\n(percentage point)",
-          direction = "horizontal",
-          nbin = 20,
-          draw.ulim = TRUE,
-          draw.llim = TRUE,
-          title.position = "top",
-          title.hjust = 0.5,
-          barheight = unit(2, units = "mm"),
-          barwidth = unit(50, units = "mm")
-          ),
-        oob = squish) +
-      facet_wrap(~month) +
-      theme(panel.grid.major = element_line(colour = "white"),
-        axis.title = element_blank(),
-        axis.text.y = element_blank(),
-        axis.text.x = element_blank(),
-        line = element_blank(),
-        rect = element_blank(),
-        panel.grid = element_blank(),
-        legend.position = "bottom",
-        text = element_text(face = "bold", size = 10))
-    
-    # monthly_diffs
-    
-    monthly_diffs %>%
-      ggsave(filename = paste0("figs/predicted_ice_extent_map_monthly_", models[j], "_", rcps[i], ".png"),
-             width = 6,
-             height = 6,
-             dpi = "retina")
   }
 }
 ```
 
 
-## monthly predicted change stats
+## monthly predicted change stats NH
 
 ```{r}
 dat_dir = "~/Google_Drive/predicted_monthly_river_ice_change_number"
@@ -2000,18 +2114,41 @@ fileinfo = tibble(filenames, filepaths) %>%
     rcp = (strsplit(filenames, split = c("_")) %>% unlist())[(1:N) %% 4 - 2 == 1],
     file_index = as.integer(substr((strsplit(filenames, split = c("_")) %>% unlist())[(1:N) %% 4 + 1 == 1], start = 1, stop = 1)))
 
+ntropics = 3592377
+
 w = tibble(
-  file_index = 0:7, 
-  npixels = c(450966, 1391761, 1142861, 139120, 1357906, 2508510, 4161942, 1074039))
+  file_index = 0:8, 
+  npixels = c(450966, 1391761, 1142861, 139120, 1357906, 2508510, 4161942, 1074039, ntropics))
+
+tropics = tibble(month = 1:12, period1 = 0, period2 = 0, diff = 0, file_index = 8)
+
+w %>% summarise(npixels = sum(npixels))
+
+i = 1
+for (modeli in fileinfo %>% dplyr::select(model) %>% distinct() %>% pull) {
+  for (rcpi in fileinfo %>% dplyr::select(rcp) %>% distinct() %>% pull) {
+    temp = tropics %>% mutate(model = modeli, rcp = rcpi)
+    if (i == 1) {
+      tropicsAll = temp
+      i = i + 1
+    } else {
+      tropicsAll = bind_rows(tropicsAll, temp)
+    }
+  }
+}
+
+tropicsAll = tropicsAll %>% 
+  filter(!(model == "MIROC-ESM" & rcp == "rcp45"))
 
 dat_monthly_rif = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
   temp = fileinfo[i, ]
   read_csv(temp$filepaths) %>% 
     mutate(model = temp$model,
            rcp = temp$rcp,
-           file_index = temp$file_index)
+           file_index = temp$file_index) %>% 
+    dplyr::select(-`system:index`, -`.geo`)
 } %>% 
-  dplyr::select(-`system:index`, -`.geo`) %>% 
+  bind_rows(tropicsAll) %>% 
   left_join(w, by = "file_index") %>% 
   group_by(model, rcp, month) %>% 
   summarise(
@@ -2022,7 +2159,7 @@ dat_monthly_rif = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
   ungroup %>% 
   mutate(month = factor(month, levels = 1:12, labels = month.abb))
 
-save(dat_monthly_rif, file = "predicted_monthly_rif_change.RData")
+save(dat_monthly_rif, file = "predicted_monthly_rif_change_NH.RData")
 
 dat_monthly_rif %>% 
   ggplot() +
@@ -2055,6 +2192,114 @@ dat_monthly_rif %>%
             pchange_ns_mean = mean(pchange))
 ```
 
+## monthly predicted change stats SH
+
+```{r}
+dat_dir = "~/Google_Drive/predicted_monthly_river_ice_change_number_SH"
+
+filenames = dat_dir %>% dir(pattern = "monthlyStats_*")
+filepaths = dat_dir %>% dir(pattern = "monthlyStats_*", full.names = T)
+N = length(strsplit(filenames, split = c("_")) %>% unlist())
+
+fileinfo = tibble(filenames, filepaths) %>% 
+  mutate(
+    model = (strsplit(filenames, split = c("_")) %>% unlist())[(1:N) %% 4 - 1 == 1],
+    rcp = (strsplit(filenames, split = c("_")) %>% unlist())[(1:N) %% 4 - 2 == 1],
+    file_index = as.integer(substr((strsplit(filenames, split = c("_")) %>% unlist())[(1:N) %% 4 + 1 == 1], start = 1, stop = 1)))
+
+w = tibble(
+  file_index = 0:7, 
+  npixels = c(0, 0, 3034688, 135893, 935265, 138134, 347300, 541229))
+
+w %>% summarise(npixels = sum(npixels))
+
+dat_monthly_rif_sh = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
+  temp = fileinfo[i, ]
+  test = read_csv(temp$filepaths) %>% 
+    mutate(model = temp$model,
+           rcp = temp$rcp,
+           file_index = temp$file_index)
+  if (ncol(test) != 6) {
+    test
+  }
+} %>% 
+  dplyr::select(-`system:index`, -`.geo`) %>% 
+  left_join(w, by = "file_index") %>% 
+  group_by(model, rcp, month) %>% 
+  summarise(
+    rif1 = weighted.mean(period1, w = npixels),
+    rif2 = weighted.mean(period2, w = npixels),
+    dff = rif2 - rif1,
+    diff21 = weighted.mean(diff, w = npixels)) %>% 
+  ungroup %>% 
+  mutate(month = factor(month, levels = 1:12, labels = month.abb))
+
+save(dat_monthly_rif_sh, file = "predicted_monthly_rif_change_SH.RData")
+
+load("predicted_monthly_rif_change_SH.RData", verbose = T)
+
+dat_monthly_rif_sh %>% 
+  ggplot() +
+  geom_bar(aes(x = month, y = dff * 100, fill = rcp), stat = "identity", position = "dodge") +
+  facet_wrap(~model) +
+  labs(
+    x = "Month",
+    y = "Changes in river ice extent (percentage points)",
+    fill = "RCP"
+  )
+
+dat_monthly_rif_sh %>% 
+  filter(model == "CESM1-BGC") %>% 
+  mutate(
+    "Change (% point)" = format(diff21 * 100, digits = 1),
+    "Change (%)" = paste0(format(diff21 / rif1 * 100, digits = 0), "%")) %>% 
+  rename(
+    Model = model,
+    Scenario = rcp,
+    Month = month) %>% 
+  dplyr::select(-rif1, -rif2, -dff, -diff21) %>% 
+  filter(Scenario == "rcp85")
+
+dat_monthly_rif_sh %>% 
+  filter(model == "CESM1-BGC") %>% 
+  filter(month %in% month.abb[-(6:8)]) %>%
+  mutate(pchange = dff / rif1 * 100) %>% 
+  group_by(rcp) %>% 
+  summarise(dff_ns_mean = mean(dff),
+            pchange_ns_mean = mean(pchange))
+```
+
+## global monthly predicted change stats
+
+```{r}
+load("predicted_monthly_rif_change_NH.RData", verbose = T)
+dat_monthly_rif_nh = dat_monthly_rif %>% 
+  filter(model == "CESM1-BGC") %>% 
+  mutate(w = 15819482)
+load("predicted_monthly_rif_change_SH.RData", verbose = T)
+dat_monthly_rif_sh = dat_monthly_rif_sh %>% 
+  filter(model == "CESM1-BGC") %>% 
+  mutate(w = 5132509)
+
+dat_monthly_rif_global = dat_monthly_rif_nh %>% 
+  bind_rows(dat_monthly_rif_sh) %>% 
+  group_by(month, rcp) %>% 
+  summarise(
+    rif1 = weighted.mean(rif1, w = w),
+    rif2 = weighted.mean(rif2, w = w),
+    diff21 = weighted.mean(diff21, w = w)) %>% 
+  ungroup %>% 
+  mutate(pchange = diff21 / rif1 * 100)
+
+dat_monthly_rif_global %>% 
+  filter(rcp == "rcp85") %>% 
+  summary()
+
+dat_monthly_rif_global %>% 
+  filter(rcp == "rcp45") %>% 
+  summary()
+```
+
 
 ## Map comparing durations
 
@@ -2062,7 +2307,7 @@ dat_monthly_rif %>%
 
 ```{r}
 
-dat_dir = "~/Google_Drive/predicted_duration_change/"
+dat_dir = "~/Google_Drive/duration_change_maps/"
 
 filename = dir(dat_dir, pattern = "*.tif")
 filepath = dir(dat_dir, pattern = "*.tif", full.names = T)
@@ -2074,18 +2319,25 @@ fileinfo = tibble(filename, filepath) %>%
     rcp = (strsplit(filename, split = c("_")) %>% unlist())[(1:N) %% 5 - 3 == 1],
     period = (strsplit(filename, split = c("_")) %>% unlist())[(1:N) %% 5 + 1 == 1]
     ) %>% 
-  mutate(period = factor(period, levels = c("08-28.tif", "79-99.tif", "diff.tif"), labels = c("2008-2028", "2079-2099", "Difference"))) %>% 
-  mutate(cropped_file_name = paste(model, rcp, period, ".tif", sep = "_"))
+  mutate(period = factor(period, levels = c("08-28.tif", "79-99.tif", "diff.tif"), labels = c("2009-2029", "2080-2100", "Difference"))) %>% 
+  mutate(
+    cropped_file_name_nh = paste(model, rcp, period, "nh.tif", sep = "_"),
+    cropped_file_name_sh = paste(model, rcp, period, "sh.tif", sep = "_")
+    )
 
 img_dat = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
   
   require(raster)
   # https://joeyklee.github.io/broc-cli-geo/guide/XX_raster_cropping_and_clipping.html
-  cmdstring = paste("cd ~/Google_Drive/predicted_duration_change/; gdalwarp -dstnodata -1 -cutline world_outline_clipped_final_grwl.shp -crop_to_cutline", fileinfo$filename[i], fileinfo$cropped_file_name[i], sep = " ")
+  cmdstring = paste("cd ~/Google_Drive/duration_change_maps/; gdalwarp -dstnodata -1 -cutline world_clipped_grwl_nh.shp -crop_to_cutline", fileinfo$filename[i], fileinfo$cropped_file_name_nh[i], sep = " ")
   
   system(cmdstring)
   
-  paste0(dat_dir, fileinfo$cropped_file_name[i]) %>% 
+  cmdstring = paste("cd ~/Google_Drive/duration_change_maps/; gdalwarp -dstnodata -1 -cutline world_clipped_grwl_sh.shp -crop_to_cutline", fileinfo$filename[i], fileinfo$cropped_file_name_sh[i], sep = " ")
+  
+  system(cmdstring)
+  
+  t1 = paste0(dat_dir, fileinfo$cropped_file_name_nh[i]) %>% 
     raster() %>% 
     projectRaster(crs = "+proj=stere +lat_0=90 +lat_ts=71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs") %>% 
     as(Class = "SpatialPixelsDataFrame") %>% 
@@ -2094,64 +2346,103 @@ img_dat = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
     mutate(model = fileinfo$model[i],
            rcp = fileinfo$rcp[i],
            period = fileinfo$period[i]) %>% 
-    dplyr::select(x, y, duration, model, rcp, period)
+    dplyr::select(x, y, duration, model, rcp, period) %>% 
+    mutate(hemisphere = "nh")
   
+  t2 = paste0(dat_dir, fileinfo$cropped_file_name_sh[i]) %>% 
+    raster() %>% 
+    projectRaster(crs = "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs") %>% 
+    as(Class = "SpatialPixelsDataFrame") %>% 
+    as_tibble() %>% 
+    mutate(duration = .[, 1] %>% pull) %>% 
+    mutate(model = fileinfo$model[i],
+           rcp = fileinfo$rcp[i],
+           period = fileinfo$period[i]) %>% 
+    dplyr::select(x, y, duration, model, rcp, period) %>% 
+    mutate(hemisphere = "sh")
+  
+  bind_rows(t1, t2)
 }
 
-save(img_dat, file = "outputs/duration_map.RData")
+save(img_dat, file = "outputs/duration_map_global.RData")
 
 ```
 
 ### export the figure
 
 ```{r}
+load("outputs/duration_map_global.RData", verbose = T)
+
 img_dat_comp = img_dat %>% 
   filter(period != "Difference") %>% 
   mutate(duration_grp = base::cut(duration, breaks = c(0, 5, 15, 90, 180, 366), labels = c("Ice free", "Intermittent", "0.5-3 months", "3-6 months", ">6 months"), include.lowest = T))
 
+img_dat_comp = img_dat_comp %>% 
+  mutate(period = factor(as.character(period), levels = c("2008-2028", "2079-2099"), labels = c("2009-2029", "2080-2100")))
+
 models = img_dat %>% dplyr::select(model) %>% distinct() %>% pull
 rcps = img_dat %>% dplyr::select(rcp) %>% distinct() %>% pull
+ns = img_dat %>% dplyr::select(hemisphere) %>% distinct() %>% pull
+
+# world_clipped_unioned = world_clipped %>% st_transform(crs = crs) %>% st_union()
 
 for (j in 1:length(models)) {
   for (i in 1:length(rcps)) {
-    duration_comps = img_dat_comp %>% 
-      filter(
-        model == models[j],
-        rcp == rcps[i]) %>% 
-      ggplot() +
-      geom_sf(data = world_clipped %>% st_transform(crs = 3995), fill = "white", color = NA) +
-      geom_tile(aes(x, y, fill = duration_grp)) +
-      geom_sf(data = world_clipped %>% st_transform(crs = 3995), fill = NA, color = "black", lwd = 0.3) +
-      scale_fill_viridis_d(
-        begin = 0.1,
-        guide = guide_legend(
-          direction = "horizontal",
-          title.position = "top",
-          title.hjust = 0.5,
-          keywidth = 2.5,
-          keyheight = 0.5,
-          label.position = "bottom",
-          label.hjust = 0.5
-        )) +
-      coord_sf(crs = 3995, x = c(-7e06, 8e06), y = c(-6e06, 5e06)) +
-      labs(fill = "River ice duration") +
-      theme(panel.grid.major = element_line(color = "white", size = 0.5),
-            axis.text.y = element_blank(),
-            axis.text.x = element_blank(),
-            line = element_blank(),
-            rect = element_blank(),
-            text = element_text(size = 10),
-            panel.grid = element_blank(),
-            legend.position = "bottom",
-            axis.title = element_blank()) +
-      facet_wrap(~period)
+    for (k in 1:length(ns)) {
+      
+      if (ns[k] == "nh") {
+        world_clipped = world_clipped_nh %>% st_union
+        crs = 3995
+        xlim = c(-7e06, 8e06)
+        ylim = c(-6e06, 7e06)
+      } else if (ns[k] == "sh") {
+        world_clipped = world_clipped_sh %>% st_union
+        crs = 3031
+        xlim = c(-7.5e6, 7.5e6)
+        ylim = c(-7.5e6, 7.5e6)
+      }
+      
+      duration_comps = img_dat_comp %>% 
+        filter(
+          model == models[j],
+          rcp == rcps[i],
+          hemisphere == ns[k]) %>% 
+        ggplot() +
+        geom_sf(data = world_clipped %>% st_transform(crs = crs), fill = "white", color = NA) +
+        geom_tile(aes(x, y, fill = duration_grp)) +
+        geom_sf(data = world_clipped %>% st_transform(crs = crs), fill = NA, color = "black", lwd = 0.3) +
+        scale_fill_viridis_d(
+          begin = 0.1,
+          guide = guide_legend(
+            direction = "horizontal",
+            title.position = "top",
+            title.hjust = 0.5,
+            keywidth = 2.5,
+            keyheight = 0.5,
+            label.position = "bottom",
+            label.hjust = 0.5
+          )) +
+        coord_sf(crs = crs, x = xlim, y = ylim) +
+        labs(fill = "River ice duration") +
+        theme(panel.grid.major = element_line(color = "white", size = 0.5),
+              axis.text.y = element_blank(),
+              axis.text.x = element_blank(),
+              line = element_blank(),
+              rect = element_blank(),
+              text = element_text(size = 10),
+              panel.grid = element_blank(),
+              legend.position = "bottom",
+              axis.title = element_blank()) +
+        facet_wrap(~period)
+      
+      # duration_comps
+      
+      duration_comps %>% 
+        ggsave(filename = paste0("figs/ice_duration_map_comparison_", models[j], "_", rcps[i], "_", ns[k], ".png"),
+               width = 6,
+               height = 3.5)
+    }
     
-    duration_comps
-    
-    duration_comps %>% 
-      ggsave(filename = paste0("figs/ice_duration_map_comparison_", models[j], "_", rcps[i], ".png"),
-             width = 6,
-             height = 3.5)
   }
 }
 
@@ -2165,54 +2456,72 @@ img_dat_diff = img_dat %>%
 
 models = img_dat %>% dplyr::select(model) %>% distinct() %>% pull
 rcps = img_dat %>% dplyr::select(rcp) %>% distinct() %>% pull
+ns = img_dat %>% dplyr::select(hemisphere) %>% distinct() %>% pull
 
 require(scales)
 for (j in 1:length(models)) {
   for (i in 1:length(rcps)) {
-    duration_diff = img_dat_diff %>% 
-      filter(
-        rcp == rcps[i],
-        model == models[j]) %>% 
-      ggplot() +
-      geom_sf(data = world_clipped %>% st_transform(crs = 3995), fill = "white", color = NA) +
-      geom_tile(aes(x, y, fill = duration)) +
-      geom_sf(data = world_clipped %>% st_transform(crs = 3995), fill = NA, color = "black", lwd = 0.3) +
-      scale_fill_gradient2(
-        low = "red", 
-        mid = "grey", 
-        high = "blue", 
-        midpoint = 0,
-        limits = c(-90, 5),
-        # breaks = c(-150, -90, -60, -30, -20, -10),
-        # trans = scales::pseudo_log_trans(base = 2, sigma = 3),
-        guide = guide_colorbar(
-          direction = "horizontal",
-          title.position = "top",
-          title.hjust = 0,
-          label.position = "bottom",
-          label.hjust = 0.5,
-          barheight = unit(3, units = "mm"),
-          barwidth = unit(50, units = "mm")
-        ),
-        oob = squish) +
-      coord_sf(crs = 3995, x = c(-7e06, 8e06), y = c(-6e06, 5e06)) +
-      labs(fill = "Changes in river ice duration (days)\nbetween 2008-2028 and 2079-2099") +
-      theme(panel.grid.major = element_line(color = "white", size = 0.5),
-            axis.text.y = element_blank(),
-            axis.text.x = element_blank(),
-            line = element_blank(),
-            rect = element_blank(),
-            text = element_text(size = 10),
-            panel.grid = element_blank(),
-            legend.position = "bottom",
-            axis.title = element_blank())
+    for (k in 1:length(ns)) {
+      
+      if (ns[k] == "nh") {
+        world_clipped = world_clipped_nh %>% st_union
+        crs = 3995
+        xlim = c(-7e06, 8e06)
+        ylim = c(-6e06, 7e06)
+      } else if (ns[k] == "sh") {
+        world_clipped = world_clipped_sh %>% st_union
+        crs = 3031
+        xlim = c(-7.5e6, 7.5e6)
+        ylim = c(-7.5e6, 7.5e6)
+      }
+      
+      duration_diff = img_dat_diff %>% 
+        filter(
+          rcp == rcps[i],
+          model == models[j],
+          hemisphere == ns[k]) %>% 
+        ggplot() +
+        geom_sf(data = world_clipped %>% st_transform(crs = crs), fill = "white", color = NA) +
+        geom_tile(aes(x, y, fill = duration)) +
+        geom_sf(data = world_clipped %>% st_transform(crs = crs), fill = NA, color = "black", lwd = 0.3) +
+        scale_fill_gradient2(
+          low = "red", 
+          mid = "grey", 
+          high = "blue", 
+          midpoint = 0,
+          limits = c(-90, 5),
+          # breaks = c(-150, -90, -60, -30, -20, -10),
+          # trans = scales::pseudo_log_trans(base = 2, sigma = 3),
+          guide = guide_colorbar(
+            direction = "horizontal",
+            title.position = "top",
+            title.hjust = 0,
+            label.position = "bottom",
+            label.hjust = 0.5,
+            barheight = unit(3, units = "mm"),
+            barwidth = unit(50, units = "mm")
+          ),
+          oob = squish) +
+        coord_sf(crs = crs, x = xlim, y = ylim) +
+        labs(fill = "Changes in river ice duration (days)\nbetween 2009-2029 and 2080-2100") +
+        theme(panel.grid.major = element_line(color = "white", size = 0.5),
+              axis.text.y = element_blank(),
+              axis.text.x = element_blank(),
+              line = element_blank(),
+              rect = element_blank(),
+              text = element_text(size = 10),
+              panel.grid = element_blank(),
+              legend.position = "bottom",
+              axis.title = element_blank())
+      
+      # duration_diff
+      
+      duration_diff %>% 
+        ggsave(filename = paste0("figs/ice_duration_map_difference_", models[j], "_", rcps[i], "_", ns[k], ".png"),
+               width = 3,
+               height = 3.5)
+    }
     
-    duration_diff
-    
-    duration_diff %>% 
-      ggsave(filename = paste0("figs/ice_duration_map_difference_", models[j], "_", rcps[i], ".png"),
-             width = 3,
-             height = 3.5)
    }
 }
 
@@ -2269,6 +2578,38 @@ ggplot() +
 
 
 ## duration difference between 0828 and 7999 stats
+
+### global duration difference
+
+```{r}
+load("outputs/annual_dat_global_0899.RData", verbose = T)
+
+duration_two_periods = annual_dat_global %>% 
+  filter((year >= 2009 & year < 2029) | (year >= 2080 & year < 2100)) %>% 
+  mutate(period = base::cut(year, breaks = c(2008, 2050, 2099), labels = c("y0929", "y8000"), include.lowest = T)) %>% 
+  group_by(model, rcp, period) %>% 
+  summarise(
+    mean_ice_duration = mean(mean_ice_duration),
+    mean_SAT = mean(gsat)
+  ) %>% 
+  ungroup()
+
+## duration change
+duration_two_periods %>% 
+  dplyr::select(-mean_SAT) %>% 
+  spread(period, mean_ice_duration) %>% 
+  mutate(duration_diff = y8000 - y0929) %>% 
+  dplyr::select(-y8000, -y0929)
+
+## SAT change
+duration_two_periods %>% 
+  dplyr::select(-mean_ice_duration) %>% 
+  spread(period, mean_SAT) %>% 
+  mutate(meanSAT_diff = y8000 - y0929) %>% 
+  dplyr::select(-y8000, -y0929)
+```
+
+### NH duration difference
 
 ```{r}
 dat_dir = "~/Google_Drive/predicted_monthly_river_ice_change_number"
@@ -2327,7 +2668,7 @@ dat_duration %>%
 ### read in annual global mean temperature
 
 ```{r}
-dat_dir = "~/Google_Drive/predicted_global_mean"
+dat_dir = "~/Google_Drive/predicted_global_mean_SAT/"
 filename = dir(dat_dir)
 filepath = dir(dat_dir, full.names = T)
 N = length(strsplit(filename, split = c("_")) %>% unlist())
@@ -2361,13 +2702,13 @@ dat_temperature = dat_temperature %>%
 
 dat_temperature %>% 
   ggplot() +
-  geom_point(aes(x = year, y = delta_gsat, color = rcp, type = model))
+  geom_point(aes(x = year, y = delta_gsat, color = rcp, pch = model))
 
 dat_temperature %>% 
   ggplot() +
-  geom_point(aes(x = delta_gsat, y = gsat, color = rcp, type = model))
+  geom_point(aes(x = delta_gsat, y = gsat, color = rcp, pch = model))
 
-save(dat_temperature, file = "outputs/annual_global_mean_temperature.RData")
+save(dat_temperature, file = "outputs/annual_global_mean_temperature_0899.RData")
 
 dat_temperature %>% 
   filter(year <= 2028 | year >= 2080) %>% 
@@ -2385,12 +2726,13 @@ dat_temperature %>%
 ### changing ice duration and % of ice-affected rivers v.s. global mean temperature change
 
 ```{r}
+w = read_csv("data/grwlByLonBandsNpoints.csv")
+w = w %>% 
+  arrange(lonStart) %>% 
+  mutate(file_index = 0:(nrow(.) - 1)) %>% 
+  dplyr::select(-lonStart)
 
-w = tibble(
-  file_index = 0:7, 
-  npixels = c(450966, 1391761, 1142861, 139120, 1357906, 2508510, 4161942, 1074039))
-
-dat_dir = "~/Google_Drive/predicted_river_ice_change_global_model"
+dat_dir = "~/Google_Drive/predicted_annual_river_ice_global_0899"
 
 files = dir(dat_dir, pattern = "*.csv")
 filepaths = dir(dat_dir, pattern = "*.csv", full.names = T)
@@ -2400,7 +2742,7 @@ fileinfo = tibble(files, filepaths) %>%
   mutate(
     model = (strsplit(files, split = c("_")) %>% unlist())[(1:N) %% 3 == 1],
     rcp = (strsplit(files, split = c("_")) %>% unlist())[(1:N) %% 3 - 1 == 1],
-    file_index = as.integer(substr((strsplit(files, split = c("_")) %>% unlist())[(1:N) %% 3 + 1 == 1], start = 1, stop = 1)))
+    file_index = as.integer(strsplit((strsplit(files, split = c("_")) %>% unlist())[(1:N) %% 3 + 1 == 1], split = c(".csv")) %>% unlist()))
 
 dat = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
   current_file = fileinfo[i, ]
@@ -2413,50 +2755,30 @@ dat = foreach(i = 1:nrow(fileinfo), .combine = "bind_rows") %do% {
   dplyr::select(-`system:index`, -`.geo`)
 
 
-annual_dat_nh_nontropical = dat %>% 
+annual_dat_global = dat %>% 
   group_by(model, rcp, year) %>% 
   summarise(
-    ice_affected = weighted.mean(iceEffect, w = npixels),
-    mean_ice_duration = weighted.mean(iceFraction, w = npixels) * 365,
-    mean_tas = weighted.mean(tasmean, w = npixels)) %>% 
+    ice_affected = weighted.mean(iceAffected, w = npoints),
+    mean_ice_duration = weighted.mean(iceStatus, w = npoints) * 365,
+    mean_ice_fraction = weighted.mean(iceFraction, w = npoints),
+    mean_tas = weighted.mean(tasmean, w = npoints)) %>% 
   ungroup()
 
-annual_dat_nh_nontropical %>% 
+annual_dat_global %>% 
   # filter(model == "CESM1-BGC") %>% 
   ggplot() +
   geom_point(aes(x = mean_tas, y = ice_affected, color = rcp)) +
   geom_smooth(aes(x = mean_tas, y = ice_affected, color = rcp), method = lm) +
   facet_wrap(~model)
 
-## nh stats
-
-nh_tropic = dat %>% 
-  dplyr::select(year, model, rcp) %>% 
-  distinct() %>% 
-  mutate(
-    iceEffect = 0,
-    iceFraction = 0,
-    npixels = 3592377
-  )
-
-dat_nh = dat %>% 
-  dplyr::select(-file_index, -tasmean) %>% 
-  bind_rows(nh_tropic)
-
-annual_dat_nh = dat_nh %>% 
-  group_by(model, rcp, year) %>% 
-  summarise(
-    ice_affected = weighted.mean(iceEffect, w = npixels),
-    mean_ice_duration = weighted.mean(iceFraction, w = npixels) * 365) %>% 
-  ungroup()
-
 ## attach gsat
-annual_dat_nh = annual_dat_nh %>% 
+load("outputs/annual_global_mean_temperature_0899.RData", verbose = T)
+annual_dat_global = annual_dat_global %>% 
   left_join(dat_temperature, by = c("model", "rcp", "year"))
 
-save(annual_dat_nh, file = "outputs/annual_dat_nh.RData")
+save(annual_dat_global, file = "outputs/annual_dat_global_0899.RData")
 
-predicted_ice_affected_percent_nh = annual_dat_nh %>% 
+predicted_ice_affected_percent_global = annual_dat_global %>% 
   # filter(model == "CESM1-BGC") %>% 
   ggplot() +
   geom_point(aes(x = year, y = ice_affected, color = rcp)) +
@@ -2475,22 +2797,25 @@ predicted_ice_affected_percent_nh = annual_dat_nh %>%
       strip.text = element_text(size = 12, face = "bold"),
       strip.background = element_blank())
 
-predicted_ice_affected_percent_nh
+predicted_ice_affected_percent_global
 
-predicted_ice_affected_percent_nh %>% 
+predicted_ice_affected_percent_global %>% 
   ggsave(
-    filename = "figs/predicted_ice_affected_percent_nh.png",
+    filename = "figs/predicted_ice_affected_percent_global.png",
     width = 6,
     height = 5
   )
 
-predicted_ice_affected_percent_nh_temp = annual_dat_nh %>% 
+h = 0.5
+w = 0.5
+
+predicted_ice_affected_percent_global_temp = annual_dat_global %>% 
   ggplot() +
   geom_point(aes(x = delta_gsat, y = ice_affected, pch = model, color = rcp), size = 0.7) +
   geom_smooth(aes(x = delta_gsat, y = ice_affected), method = lm, lwd = 0.5, se = F) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1), breaks = seq(0.54, 0.66, by = 0.03)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), breaks = seq(0.39, 53, by = 0.04)) +
   labs(
-    x = "Changes in global mean SAT (ºC)",
+    x = "Changes in global mean SAT (ºC)\n compared to 2009-2029",
     y = "Percent of river affected by ice",
     color = "RCP",
     pch = "Model"
@@ -2508,25 +2833,24 @@ predicted_ice_affected_percent_nh_temp = annual_dat_nh %>%
       legend.position = "bottom",
       legend.background = element_rect(fill = "white"))
 
-predicted_ice_affected_percent_nh_temp
+predicted_ice_affected_percent_global_temp
 
-predicted_ice_affected_percent_nh_temp %>% 
+predicted_ice_affected_percent_global_temp %>% 
   ggsave(
-    filename = "figs/predicted_ice_affected_percent_nh_delta_gsat.png",
+    filename = "figs/predicted_ice_affected_percent_global_delta_gsat.png",
     width = 3,
     height = 3.5
   )
 
-h = 0.5
-w = 0.5
 
-predicted_ice_duration_nh_temp = annual_dat_nh %>% 
+
+predicted_ice_duration_global_temp = annual_dat_global %>% 
   ggplot() +
   geom_point(aes(x = delta_gsat, y = mean_ice_duration, pch = model, color = rcp), size = 0.7) +
   geom_smooth(aes(x = delta_gsat, y = mean_ice_duration), method = lm, lwd = 0.5, se = F) +
   labs(
-    x = "Changes in global mean SAT (ºC)",
-    y = "Mean ice duration (day)",
+    x = "Changes in global mean SAT (ºC)\n compared to 2009-2029",
+    y = "Global mean ice duration (days)",
     color = "RCP",
     pch = "Model"
   ) +
@@ -2542,24 +2866,24 @@ predicted_ice_duration_nh_temp = annual_dat_nh %>%
       legend.position = "bottom",
       legend.background = element_rect(fill = "white"))
 
-predicted_ice_duration_nh_temp
+predicted_ice_duration_global_temp
 
-predicted_ice_duration_nh_temp %>% 
+predicted_ice_duration_global_temp %>% 
   ggsave(
-    filename = "figs/predicted_ice_duration_nh_delta_gsat.png",
+    filename = "figs/predicted_ice_duration_global_delta_gsat.png",
     width = 3,
     height = 3.5
   )
 
 
-summary(lm(mean_ice_duration ~ delta_gsat, data = annual_dat_nh))
+summary(lm(mean_ice_duration ~ delta_gsat, data = annual_dat_global))
 
-summary(lm(ice_affected ~ delta_gsat, data = annual_dat_nh))
+summary(lm(ice_affected ~ delta_gsat, data = annual_dat_global))
 
 ```
 
 ```{r}
-annual_dat_nh %>% 
+annual_dat_global %>% 
   ggplot() +
   geom_point(aes(x = ice_affected, y = mean_ice_duration, pch = model, color = rcp)) +
   geom_smooth(aes(x = ice_affected, y = mean_ice_duration), method = lm) +
