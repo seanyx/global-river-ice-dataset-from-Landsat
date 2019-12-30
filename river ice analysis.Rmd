@@ -113,30 +113,6 @@ datfil = datfil %>%
 save(datfil, file = "outputs/river_ice_era_temp.RData")
 
 load("outputs/river_ice_era_temp.RData", verbose = T)
-
-
-
-
-
-# filterEffect = datfil %>% 
-#   # sample_frac(0.1) %>% 
-#   ggplot() + 
-#   geom_point(aes(x = temp, y = ice_fraction, color = "all data"), alpha = 0.3, size = 0.2) +
-#   geom_point(data = datfil %>% filter(cloud_fraction <= 0.05), aes(x = temp, y = ice_fraction, color = "cloud_fraction <= 0.05"), alpha = 0.2, size = 0.2) +
-#   geom_point(data = datfil %>% filter(cloud_fraction <= 0.05, topo_shadow >= 0.95), aes(x = temp, y = ice_fraction, color = "cloud_fraction <= 0.05, shadow >= 0.95"), alpha = 0.2, size = 0.2) +
-#   geom_point(data = datfil %>% filter(cloud_fraction <= 0.05, topo_shadow >= 0.95, nclearpixels >= 300), aes(x = temp, y = ice_fraction, color = "cloud_fraction <= 0.05, shadow >= 0.95, nclearpixels >= 300"), alpha = 0.2, size = 0.2) +
-#   labs(x = "Temperature",
-#        y = "Ice fraction",
-#        color = "Filters applied") +
-#   theme(legend.position = "bottom", 
-#         legend.direction = "vertical")
-# 
-# filterEffect
-# 
-# filterEffect %>% 
-#   ggsave(filename = "figs/filterEffect.png",
-#          width = 6,
-#          height = 6)
 ```
 
 
@@ -1102,7 +1078,7 @@ model_comp = model_errors %>%
   coord_cartesian(expand = c(0, 0)) +
   labs(
     x = "30-day prior mean SAT (ºC)",
-    y = "Ice cover extent"
+    y = "Ice cover extent error (%)"
   ) +
   theme(panel.grid.major.y = element_line(color = "lightgrey", size = 0.25, linetype = 1),
         panel.grid.major.x = element_blank(),
@@ -1115,7 +1091,7 @@ model_comp = model_errors %>%
 model_comp
 
 model_comp %>% 
-  ggsave(filename = "figs/final_figures/fig2b.pdf",
+  ggsave(filename = "figs/final_figures/fig2b_ylabel_corrected.pdf",
          device = "pdf",
          units = "mm",
          width = 89,
@@ -1823,7 +1799,7 @@ world_clipped_nh_land = world %>%
 world_clipped_sh_land = world %>%
   st_difference(extentsfc_nh)
 
-plot(world_clipped_nh_land)
+plot(world_clipped_nh_land %>% st_transform(crs = 3995))
 plot(world_clipped_sh_land)
 
 st_write(world_clipped_nh_land, dsn = "~/Google_Drive/monthly_map_river_ice_future_change_global/world_clipped_nh.shp")
@@ -1972,6 +1948,7 @@ dat_monthly_rif_nh = dat_monthly_rif_nh %>%
 dat_monthly_rif_sh = dat_monthly_rif_sh %>% 
   mutate(x = xytext_sh[1], y = xytext_sh[2])
 
+require(scales)
 for (j in 1:length(models)) {
   for (i in 1:length(rcps)) {
     for (k in 1:length(ns)) {
@@ -2090,7 +2067,7 @@ for (j in 1:length(models)) {
       # monthly_diffs
       if (k == 1 & i == 2) {
         monthly_diffs %>%
-          ggsave(filename = paste0("figs/final_figures/predicted_ice_extent_map_monthly_", models[j], "_", rcps[i], "_", ns[k], ".", device),
+          ggsave(filename = paste0("figs/final_figures/corrected_predicted_ice_extent_map_monthly_", models[j], "_", rcps[i], "_", ns[k], ".", device),
                  device = device,
                  units = "mm",
                  width = output_width,
@@ -2099,7 +2076,7 @@ for (j in 1:length(models)) {
                  colormode = "rgb")
       } else {
         monthly_diffs %>%
-          ggsave(filename = paste0("figs/final_figures/predicted_ice_extent_map_monthly_", models[j], "_", rcps[i], "_", ns[k], ".", device),
+          ggsave(filename = paste0("figs/final_figures/corrected_predicted_ice_extent_map_monthly_", models[j], "_", rcps[i], "_", ns[k], ".", device),
                  device = device,
                  units = "mm",
                  width = output_width,
@@ -2109,7 +2086,7 @@ for (j in 1:length(models)) {
       
       
       monthly_diffs %>%
-        ggsave(filename = paste0("figs/final_figures/predicted_ice_extent_map_monthly_", models[j], "_", rcps[i], "_", ns[k], ".png"),
+        ggsave(filename = paste0("figs/final_figures/corrected_predicted_ice_extent_map_monthly_", models[j], "_", rcps[i], "_", ns[k], ".png"),
                device = "png",
                units = "mm",
                width = output_width,
@@ -2424,7 +2401,7 @@ for (j in 1:length(models)) {
     for (k in 1:length(ns)) {
       
       if (ns[k] == "nh") {
-        world_clipped = world_clipped_nh %>% st_union
+        world_clipped = world_clipped_nh_land %>% st_union
         crs = 3995
         xlim = c(-7e06, 8e06)
         ylim = c(-6e06, 7e06)
@@ -2434,7 +2411,7 @@ for (j in 1:length(models)) {
           device = "pdf"
         }
       } else if (ns[k] == "sh") {
-        world_clipped = world_clipped_sh %>% st_union
+        world_clipped = world_clipped_sh_land %>% st_union
         crs = 3031
         xlim = c(-7.5e6, 7.5e6)
         ylim = c(-7.5e6, 7.5e6)
@@ -2477,14 +2454,14 @@ for (j in 1:length(models)) {
       # duration_comps
       
       duration_comps %>% 
-        ggsave(filename = paste0("figs/final_figures/ice_duration_map_comparison_", models[j], "_", rcps[i], "_", ns[k], ".", device),
+        ggsave(filename = paste0("figs/final_figures/corrected_ice_duration_map_comparison_", models[j], "_", rcps[i], "_", ns[k], ".", device),
                device = device,
                units = "mm",
                width = 120,
                height = 70)
       
       duration_comps %>% 
-        ggsave(filename = paste0("figs/final_figures/ice_duration_map_comparison_", models[j], "_", rcps[i], "_", ns[k], ".png"),
+        ggsave(filename = paste0("figs/final_figures/corrected_ice_duration_map_comparison_", models[j], "_", rcps[i], "_", ns[k], ".png"),
                # device = device,
                units = "in",
                width = 6,
@@ -2512,12 +2489,12 @@ for (j in 1:length(models)) {
     for (k in 1:length(ns)) {
       
       if (ns[k] == "nh") {
-        world_clipped = world_clipped_nh %>% st_union
+        world_clipped = world_clipped_nh_land %>% st_union
         crs = 3995
         xlim = c(-7e06, 8e06)
         ylim = c(-6e06, 7e06)
       } else if (ns[k] == "sh") {
-        world_clipped = world_clipped_sh %>% st_union
+        world_clipped = world_clipped_sh_land %>% st_union
         crs = 3031
         xlim = c(-7.5e6, 7.5e6)
         ylim = c(-7.5e6, 7.5e6)
@@ -2565,7 +2542,7 @@ for (j in 1:length(models)) {
       # duration_diff
       
       duration_diff %>% 
-        ggsave(filename = paste0("figs/final_figures/ice_duration_map_difference_", models[j], "_", rcps[i], "_", ns[k], ".pdf"),
+        ggsave(filename = paste0("figs/final_figures/corrected_ice_duration_map_difference_", models[j], "_", rcps[i], "_", ns[k], ".pdf"),
                device = "pdf",
                units = "mm",
                width = 60,
@@ -2869,7 +2846,7 @@ predicted_ice_affected_percent_global_temp = annual_dat_global %>%
   scale_y_continuous(labels = scales::percent_format(accuracy = 1), breaks = seq(0.39, 53, by = 0.04)) +
   labs(
     x = "Changes in global mean SAT (ºC)\n compared to 2009-2029",
-    y = "Percent of river affected by ice",
+    y = "Percent of rivers affected by ice",
     color = "RCP",
     pch = "Model"
   ) +
@@ -2901,7 +2878,7 @@ predicted_ice_affected_percent_global_temp %>%
 
 predicted_ice_duration_global_temp = annual_dat_global %>% 
   ggplot() +
-  geom_point(aes(x = delta_gsat, y = mean_ice_duration, pch = model, color = rcp), size = 0.7) +
+  geom_point(aes(x = delta_gsat, y = mean_ice_duration, pch = model, color = rcp, fill = rcp), size = 0.7) +
   geom_smooth(aes(x = delta_gsat, y = mean_ice_duration), method = lm, lwd = 0.5, se = F) +
   labs(
     x = "Changes in global mean SAT (ºC)\n compared to 2009-2029",
@@ -2909,8 +2886,10 @@ predicted_ice_duration_global_temp = annual_dat_global %>%
     color = "RCP",
     pch = "Model"
   ) +
-    scale_shape_discrete(guide = guide_legend(title.position = "top", direction = "vertical", keyheight = h, keywidth = w)) +
+    # scale_shape_manual(values = c("CESM1-BGC" = 15, "GFDL-ESM2M" = 17, "MIROC-ESM" = 21), guide = guide_legend(title.position = "top", direction = "vertical", keyheight = h, keywidth = w)) +
+  scale_shape_discrete(guide = guide_legend(title.position = "top", direction = "vertical", keyheight = h, keywidth = w)) +
   scale_color_discrete(guide = guide_legend(title.position = "top", direction = "vertical", keyheight = h, keywidth = w)) +
+  guides(fill = F) +
   theme(panel.grid.major.y = element_line(color = "lightgrey", size = 0.5, linetype = 1),
       panel.grid.major.x = element_blank(),
       panel.grid.minor = element_blank(),
@@ -2925,12 +2904,13 @@ predicted_ice_duration_global_temp
 
 predicted_ice_duration_global_temp %>% 
   ggsave(
-    filename = "figs/final_figures/predicted_ice_duration_global_delta_gsat.pdf",
+    filename = "figs/final_figures/corrected_predicted_ice_duration_global_delta_gsat.pdf",
     units = "mm",
     dpi = 300,
     colormode = "rgb",
     width = 60,
-    height = 70
+    height = 70,
+    useDingbats = FALSE # https://stackoverflow.com/questions/9992275/ggplot2-pdf-import-in-adobe-illustrator-missing-font-adobepistd
   )
 
 
