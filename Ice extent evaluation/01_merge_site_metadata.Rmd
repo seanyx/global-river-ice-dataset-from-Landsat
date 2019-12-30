@@ -1,0 +1,23 @@
+---
+title: "01_merge_site_metadata"
+author: "Xiao Yang"
+date: "3/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(tidyverse)
+require(sf)
+```
+
+```{r}
+glrip = st_read(dsn = "outputs/gee_input_river_ice_glrip.shp") %>% mutate(id = paste0("glrip_", id))
+wsc = st_read(dsn = "outputs/gee_input_river_ice_WSC.shp") %>% mutate(id = paste0("wsc_", id))
+nwsAlaska = st_read(dsn = "outputs/gee_input_river_ice_NWS.shp") %>% mutate(id = paste0("nws_", id))
+
+merged = rbind(glrip, wsc, nwsAlaska)
+
+st_write(merged, dsn = "outputs/merged_val_stations.shp")
+```
+

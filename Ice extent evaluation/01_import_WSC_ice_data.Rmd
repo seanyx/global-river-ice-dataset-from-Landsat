@@ -1,0 +1,46 @@
+---
+title: "01_import_NWS_ice_data_from_Wayana"
+author: "Xiao Yang"
+date: "2/5/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+require(tidyverse)
+require(tidyhydat)
+require(sf)
+require(mapview)
+```
+
+```{r}
+stations = hy_stations() %>% 
+  filter(DRAINAGE_AREA_GROSS >= 1000)
+
+# require(foreach)
+# discharge_dv = foreach(i = stations$STATION_NUMBER[1:10], .combine = bind_rows) %do% {
+#   try(hy_daily_flows(i, start_date = "1984-03-01", end_date = "2018-12-31"), silent = T)
+# }
+
+```
+
+## Prepare data for river ice calculation from Landsat
+
+```{r}
+gee_input_wsc = stations %>% 
+  transmute(id = STATION_NUMBER,
+            date1 = 1984,
+            date2 = 2018,
+            lon = LONGITUDE,
+            lat = LATITUDE) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+mapview(gee_input_wsc)
+
+save(gee_input_wsc, file = "outputs/gee_input_wsc.RData")
+st_write(gee_input_wsc, dsn = "outputs/gee_input_river_ice_WSC.shp")
+```
+

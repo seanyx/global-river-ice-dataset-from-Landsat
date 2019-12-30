@@ -1,0 +1,747 @@
+---
+title: "03_validation"
+author: "Xiao Yang"
+date: "2/1/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+require(tidyverse)
+require(lubridate)
+```
+
+
+## load Landsat derived river ice fraction
+
+```{r}
+load("outputs/riverIceMerged_cleaned0410.RData", verbose = T)
+
+dat_landsat = dat_summary %>% 
+  mutate(
+    idRaw = id,
+    idExpanded = strsplit(id, split = "_")) %>% 
+  mutate(
+    datSource = map_chr(idExpanded, function(x) {return(unlist(x)[1])}),
+    id = map_chr(idExpanded, function(x) {return(unlist(x)[2])})) %>% 
+  select(-idExpanded) %>% 
+  filter(fmask_n >= 40)
+```
+
+## Validate river ice data from NWS Alaska
+
+```{r}
+load("outputs/NWS_alaska_river_ice.RData", verbose = T)
+
+dat_landsat_nwsAlaska = dat_landsat %>% 
+  filter(datSource == "nws")
+
+require(fuzzyjoin)
+require(foreach)
+
+dat = fubu %>% 
+  mutate(season_begin_year = waterYear,
+         date_FU1 = first_ice,
+         date_FU2 = unsafe_boat,
+         date_BU1 = breakup,
+         date_BU2 = breakup) %>% 
+  group_by(id) %>% 
+  arrange(season_begin_year) %>% 
+  do({
+    dat = . 
+    byrs = dat$season_begin_year
+    foreach(i = 1:length(byrs), .combine = bind_rows, .inorder = T) %do% {
+      curyear = dat %>% filter(season_begin_year == byrs[i]) %>% 
+        mutate(date1 = date_FU2,
+               date2 = date_BU1,
+               frozen = TRUE)
+      nxtyear = dat %>% filter(season_begin_year == byrs[i] + 1)
+      if(nrow(nxtyear) == 0) {
+        curyear
+      } else {
+        curyear %>% 
+          bind_rows(
+            curyear %>% 
+              mutate(date1 = date_BU2,
+                     date2 = nxtyear$date_FU1[1],
+                     frozen = FALSE)
+          )
+      }
+    }
+  }) %>% 
+  ungroup() %>% 
+  filter(!is.na(date1),
+         !is.na(date2))
+  
+
+validation = dat %>% 
+  group_by(id) %>% 
+  do({
+    dat = .
+    dat %>% 
+      interval_inner_join(dat_landsat_nwsAlaska %>% 
+                            filter(id == dat$id[1]) %>% 
+                            select(LANDSAT_SCENE_ID, date, fmask_n, fmask_snow, fmask_cloud, fmask_clear), by = c("date1" = "date", "date2" = "date"))
+  }) %>% 
+  ungroup()
+
+validation_nws = validation %>% 
+  transmute(
+    date = date,
+    doy = yday(date),
+    ice_in_situ = frozen,
+    ice_landsat = fmask_snow,
+    cloud_landsat = fmask_cloud,
+    clear_landsat = fmask_clear,
+    np = fmask_n,
+    imgId = LANDSAT_SCENE_ID,
+    siteId = id,
+    dat_source = "nws")
+
+save(validation_nws, file = "outputs/validation_nws.RData")
+```
+
+## Validate river ice data from WSC
+
+```{r}
+dat_landsat_wsc = dat_landsat %>% 
+  filter(datSource == "wsc")
+
+require(tidyhydat)
+
+siteIds = dat_landsat_wsc %>% select(id) %>% distinct()
+siteIds = hy_stn_data_coll(station_number = siteIds %>% pull(id)) %>% 
+  filter(DATA_TYPE == "Flow", 
+         OPERATION == "Continuous",
+         Year_to >= 1983) %>% 
+  select(STATION_NUMBER) %>% 
+  distinct()
+
+
+validation_wsc = dat_landsat_wsc %>% 
+  right_join(siteIds, by = c("id" = "STATION_NUMBER")) %>% 
+  group_by(id) %>% 
+  do({
+    dat = .
+    siteId = dat$id[1]
+    
+    wsc_flag = hy_daily(station_number = siteId) %>% 
+      filter(Parameter == "Flow") %>% 
+      select(Date, Symbol) %>% 
+      distinct()
+    
+    if(nrow(wsc_flag) ==  0) {
+      dat %>% 
+        select(fmask_snow,
+               fmask_cloud,
+               fmask_clear,
+               fmask_n,
+               LANDSAT_SCENE_ID,
+               CLOUD_COVER,
+               date) %>% 
+        mutate(Symbol = NA,
+               nb = -999,
+               nflag = -999)
+    } else {
+      
+      wsc_flag = wsc_flag %>% 
+        mutate(year = year(Date),
+               waterYear = year - (Date <= as.Date(paste0(year, "-07-01"))))
+      
+      water_year_nb = wsc_flag %>% 
+        group_by(waterYear) %>% 
+        summarise(nb = sum(Symbol == "B", na.rm = T),
+                  nflag = n()) %>% 
+        ungroup()
+      
+      wsc_flag = wsc_flag %>% 
+        select(-year) %>% 
+        left_join(water_year_nb, by = "waterYear")
+      
+      dat %>% 
+        select(fmask_snow,
+               fmask_cloud,
+               fmask_clear,
+               fmask_n,
+               LANDSAT_SCENE_ID,
+               CLOUD_COVER,
+               date) %>% 
+        left_join(wsc_flag, by = c("date" = "Date"))
+    }
+  }) %>% 
+  ungroup() %>% 
+  filter(nflag != -999)
+
+validation_wsc = validation_wsc %>% 
+  mutate(Symbol = as.factor(Symbol))
+
+validation_wsc = validation_wsc %>% 
+  filter(nb > 0) ## remove given years for each site in which there is no "B" flag
+
+save(validation_wsc, file = "outputs/validation_wsc.RData")
+```
+
+## merged validation results
+
+```{r}
+validation_nws_premerge = validation_nws %>% 
+  mutate(ice_in_situ = as.integer(ice_in_situ),
+         dat_source = "National Weather Service (Alaska)",
+         mergedId = paste0("nws", "_", siteId))
+
+validation_wsc_premerge = validation_wsc %>% 
+  filter(Symbol %in% c("B", NA)) %>% 
+  transmute(date = date,
+            doy = yday(date),
+            ice_in_situ = as.integer(!is.na(Symbol)),
+            ice_landsat = fmask_snow,
+            cloud_landsat = fmask_cloud,
+            clear_landsat = fmask_clear,
+            np = fmask_n,
+            imgId = LANDSAT_SCENE_ID,
+            siteId = id,
+            dat_source = "Water Survey of Canada",
+            mergedId = paste0("wsc", "_", siteId))
+
+validation_merged = bind_rows(validation_nws_premerge,
+                              validation_wsc_premerge) %>% 
+  mutate(dat_source = as.factor(dat_source),
+         ice_status = factor(ice_in_situ, levels = c(0, 1), labels = c("Ice-free", "Ice-covered")))
+
+save(validation_merged, file = "outputs/validation_merged.RData")
+
+
+validation_merged = validation_merged %>% 
+  filter(cloud_landsat <= 0.05)
+
+validation_merged = validation_merged %>% 
+  filter(!(mergedId %in% c("wsc_10BE013", "wsc_08KE016")))
+```
+
+<!-- ### attach river width info -->
+
+<!-- ```{r} -->
+<!-- widths = read_csv("data/stationWidthsFullGRWL.csv") -->
+
+<!-- valid_sites = widths %>%  -->
+<!--   filter(!is.na(mean)) %>%  -->
+<!--   filter(median >= 90) %>%  -->
+<!--   select(id) %>%  -->
+<!--   distinct() -->
+
+<!-- validation_merged = validation_merged %>%  -->
+<!--   inner_join(valid_sites, by = c("mergedId" = "id")) -->
+<!-- ``` -->
+
+
+## visualize validation results
+
+<!-- ### vidualize agreement through time -->
+
+<!-- ```{r} -->
+<!-- agreement = validation_merged %>%  -->
+<!--   mutate(am = abs(ice_in_situ - ice_landsat), -->
+<!--          amf = factor(am >= 0.5, levels = c(TRUE, FALSE), labels = c("Disagree", "Agree"))) -->
+
+<!-- siteId = "wsc_04KA001" -->
+
+<!-- agreement %>% -->
+<!--   filter(mergedId == "wsc_04KA001") %>%  -->
+<!--   ggplot() +  -->
+<!--   geom_density(aes(x = date, fill = amf), alpha = 0.5) -->
+
+<!-- hy_daily(station_number = "04KA001") %>%  -->
+<!--   filter(Date >= "2001-08-01", Date <= "2002-07-31") %>%  -->
+<!--   filter(Parameter == "Flow") %>%  -->
+<!--   filter(Symbol == "B" | is.na(Symbol)) %>%  -->
+<!--   mutate(ice = as.integer(!is.na(Symbol))) %>%  -->
+<!--   ggplot() + -->
+<!--   geom_point(aes(x = Date, y = ice)) + -->
+<!--   geom_line(data = validation_merged %>% -->
+<!--               filter(mergedId == "wsc_04KA001") %>%  -->
+<!--               filter(date >= "2001-08-01", date <= "2002-07-31"), aes(x = date, y = ice_in_situ, color = "in the validation"), alpha= 0.5) -->
+
+
+<!-- agreement %>%  -->
+<!--   filter(mergedId == siteId) %>%  -->
+<!--   ggplot() +  -->
+<!--   geom_density(aes(x = doy, fill = amf), alpha = 0.5) -->
+<!-- ``` -->
+
+
+### visualize overall accuracy
+
+```{r}
+validation_fig = validation_merged %>% 
+  ggplot() +
+  geom_histogram(aes(ice_landsat)) +
+  facet_grid(dat_source ~ ice_status, scales = "free_y") +
+  labs(x = "Landsat derived river ice coverage",
+       y = "Number of observations")
+
+validation_fig
+
+validation_fig %>% 
+  ggsave(filename = "figs/validation_merged.png",
+         width = 6,
+         height = 4,
+         dpi = "print")
+
+# validation_error_doy_fig = validation_merged %>% 
+#   filter(abs(ice_in_situ - ice_landsat) >= 0.5) %>% 
+#   ggplot() +
+#   geom_histogram(aes(yday(date))) +
+#   facet_grid(dat_source ~ ice_status, scales = "free_y") +
+#   labs(x = "Day of the year",
+#        y = "Number of observations")
+# 
+# validation_error_doy_fig
+# 
+# validation_error_doy_fig %>% 
+#   ggsave(filename = "figs/validation_error_doy.png",
+#          width = 6,
+#          height = 4,
+#          dpi = "print")
+```
+
+### validation map
+
+```{r}
+require(sf)
+site_meta = st_read(dsn = "outputs/merged_val_stations.shp")
+world = st_read("~/Google_Drive/Map layers/Natural_Earth_quick_start/110m_physical/ne_110m_coastline.shp")
+
+sites_sf = validation_merged %>% 
+  group_by(mergedId) %>% 
+  count %>% 
+  ungroup %>% 
+  left_join(site_meta, by = c("mergedId" = "id")) %>% 
+  st_as_sf()
+
+
+latlon = sites_sf %>% 
+  st_transform(crs = 102002) %>% 
+  st_coordinates()
+
+xymin = latlon[, 1:2] %>% apply(2, min)
+xymax = latlon[, 1:2] %>% apply(2, max)
+
+sites_sf_map = sites_sf %>%
+  ggplot() +
+  geom_sf(data = world, fill = "grey", color = "black") +
+  geom_sf(aes(size = n), color = "blue", alpha = 0.8, show.legend = "point") +
+  scale_size_area() +
+  coord_sf(crs = 102002,
+           xlim = c(xymin[1], xymax[1]), 
+           ylim = c(xymin[2], xymax[2])) +
+  labs(size = "Number of \nevaluation data",
+       x = "",
+       y = "")
+
+sites_sf_map
+
+sites_sf_map %>% 
+  ggsave(filename = "figs/sites_sf_map.png",
+         width = 6,
+         height = 4,
+         dpi = "print")
+
+```
+
+
+### calculate validation stats based on hit rate
+
+```{r}
+calcAccuracy = function(data, reference) {
+  require(caret)
+  cm = confusionMatrix(data = data, reference = reference)
+  result = tibble(
+    Accuracy = cm$overall["Accuracy"],
+    Specificity = cm$byClass["Specificity"],
+    Sensitivity = cm$byClass["Sensitivity"]
+  )
+  
+  return(result)
+}
+
+require(foreach)
+require(caret)
+sensitivity = foreach(i = seq(0.2, 0.8, by = 0.1), .combine = bind_rows) %do% {
+  validation_merged_cm = validation_merged %>% 
+    transmute(data = factor(ice_landsat >= i, levels = c(T, F), labels = c("Ice-cover", "Ice-free")),
+              reference = factor(ice_in_situ, levels = c(1, 0), labels = c("Ice-cover", "Ice-free")),
+              dat_source = dat_source,
+              mergedId = mergedId, 
+              month = month(date))
+  
+  validation_merged_cm %>% 
+    group_by(dat_source) %>% 
+    do({
+      dat = .
+      calcAccuracy(data = dat$data, reference = dat$reference) %>% 
+        mutate(threshold = i)
+    }) %>% 
+    ungroup()
+}
+
+sensitivity_threshold = sensitivity %>% 
+  gather(metric, value, -c(dat_source, threshold)) %>% 
+  ggplot() +
+  geom_bar(aes(x = threshold, y = value, fill = metric), stat = "identity", position = "dodge") +
+  facet_wrap(~dat_source) +
+  coord_cartesian(expand = F, ylim = c(0, 1)) +
+  scale_fill_viridis_d() +
+  labs(
+    x = "Threshold",
+    y = "Metric",
+    fill = ""
+  )
+
+sensitivity_threshold
+
+sensitivity_threshold %>% 
+  ggsave(filename = "figs/sensitivity_threshold.png",
+         width = 6,
+         height = 3)
+```
+
+
+### visualize per site accuracy
+
+```{r}
+require(caret)
+validation_merged_cm = validation_merged %>% 
+  transmute(data = factor(ice_landsat >= 0.5, levels = c(T, F), labels = c("Ice-cover", "Ice-free")),
+            reference = factor(ice_in_situ, levels = c(1, 0), labels = c("Ice-cover", "Ice-free")),
+            dat_source = dat_source,
+            mergedId = mergedId, 
+            month = month(date))
+
+confusionMatrix(data = validation_merged_cm$data, reference = validation_merged_cm$reference)
+
+validation_merged_cm %>% 
+  group_by(dat_source) %>% 
+  do({
+    print("confusion_matrix")
+    print(.$dat_source[1])
+    print(confusionMatrix(data = .$data, reference = .$reference))
+  }) %>% 
+  ungroup()
+
+accuracy_persite = validation_merged_cm %>% 
+  group_by(mergedId) %>% 
+  do({
+    dat = .
+    cm = confusionMatrix(data = dat$data, reference = dat$reference)
+    tibble(Accuracy = cm$overall["Accuracy"],
+           Specificity = cm$byClass["Specificity"],
+           Sensitivity = cm$byClass["Sensitivity"],
+           n = nrow(dat),
+           nice = dat %>% filter(data == "Ice-cover") %>% nrow(),
+           nwater = dat %>% filter(data == "Ice-free") %>% nrow())
+  }) %>% 
+  ungroup()
+
+save(accuracy_persite, file = "outputs/accuracy_persite.RData")
+
+accuracy_persite %>% ggplot() + geom_histogram(aes(Accuracy))
+
+per_site_accuracy_map = sites_sf %>% 
+  select(-n) %>% 
+  left_join(accuracy_persite, by = "mergedId") %>% 
+  ggplot() +
+  geom_sf(data = world, fill = "grey", color = "black") +
+  geom_sf(aes(size = n, color = Accuracy), alpha = 0.6, show.legend = "point") +
+  scale_size_area() +
+  scale_colour_viridis_c(begin = 0.1, end = 0.8) +
+  coord_sf(crs = 102002,
+           xlim = c(xymin[1], xymax[1]), 
+           ylim = c(xymin[2], xymax[2])) +
+  labs(size = "Number of \nevaluation data",
+       x = "",
+       y = "") +
+  theme(
+    legend.key = element_rect(fill = NA, size = 0)
+  )
+
+per_site_accuracy_map
+
+per_site_accuracy_map %>% 
+  ggsave(
+    filename = "figs/per_site_accuracy_map.png",
+    width = 6.5,
+    height = 4,
+    dpi = "print"
+  )
+
+## sensitivity map
+
+per_site_sensitivity_map = sites_sf %>% 
+  select(-n) %>% 
+  left_join(accuracy_persite, by = "mergedId") %>% 
+  ggplot() +
+  geom_sf(data = world, fill = "grey", color = "black") +
+  geom_sf(aes(size = nice, color = Sensitivity), alpha = 0.6, show.legend = "point") +
+  scale_size_area() +
+  scale_colour_viridis_c(begin = 0.1, end = 0.8) +
+  coord_sf(crs = 102002,
+           xlim = c(xymin[1], xymax[1]), 
+           ylim = c(xymin[2], xymax[2])) +
+  labs(size = "Number of \nevaluation data",
+       x = "",
+       y = "") +
+  theme(
+    legend.key = element_rect(fill = NA, size = 0)
+  )
+
+per_site_sensitivity_map
+
+per_site_sensitivity_map %>% 
+  ggsave(
+    filename = "figs/per_site_sensitivity_map.png",
+    width = 6.5,
+    height = 4,
+    dpi = "print"
+  )
+
+
+## Specificity map
+
+per_site_specificity_map = sites_sf %>% 
+  select(-n) %>% 
+  left_join(accuracy_persite, by = "mergedId") %>% 
+  ggplot() +
+  geom_sf(data = world, fill = "grey", color = "black") +
+  geom_sf(aes(size = nwater, color = Specificity), alpha = 0.6, show.legend = "point") +
+  scale_size_area() +
+  scale_colour_viridis_c(begin = 0.1, end = 0.8) +
+  coord_sf(crs = 102002,
+           xlim = c(xymin[1], xymax[1]), 
+           ylim = c(xymin[2], xymax[2])) +
+  labs(size = "Number of \nevaluation data",
+       x = "",
+       y = "") +
+  theme(
+    legend.key = element_rect(fill = NA, size = 0)
+  )
+
+per_site_specificity_map
+
+per_site_specificity_map %>% 
+  ggsave(
+    filename = "figs/per_site_specificity_map.png",
+    width = 6.5,
+    height = 4,
+    dpi = "print"
+  )
+
+
+## merged plot
+
+per_site_merged_map = sites_sf %>% 
+  select(-n) %>% 
+  left_join(accuracy_persite %>% 
+              gather(key = "Metric", value = "Value", -c(n, mergedId, nice, nwater)) %>% 
+              gather(key = "Ntype", value = "n", -c(mergedId, Metric, Value)) %>% 
+              filter((Metric == "Accuracy" & Ntype == "n") | (Metric == "Sensitivity" & Ntype == "nice") | (Metric == "Specificity" & Ntype == "nwater")), by = "mergedId") %>% 
+  ggplot() +
+  geom_sf(data = world, fill = "grey", color = "black") +
+  geom_sf(aes(size = n, color = Value), alpha = 0.8, show.legend = "point") +
+  scale_size_area(max_size = 4) +
+  scale_colour_viridis_c(begin = 0.1, end = 0.8) +
+  coord_sf(crs = 102002,
+           xlim = c(xymin[1], xymax[1]), 
+           ylim = c(xymin[2], xymax[2])) +
+  labs(size = "Number of \nevaluation data",
+       x = "",
+       y = "") +
+  theme(
+    legend.key = element_rect(fill = NA, size = 0)
+  ) +
+  facet_wrap(~Metric, ncol = 1)
+
+per_site_merged_map
+
+per_site_merged_map %>% 
+  ggsave(
+    filename = "figs/per_site_merged_map.png",
+    width = 5,
+    height = 9,
+    dpi = "print"
+  )
+```
+
+
+### visualize per month accuracy
+
+```{r}
+
+N = nrow(validation_merged_cm)
+
+accuracy_month = validation_merged_cm %>% 
+  group_by(month, dat_source) %>% 
+  do({
+    dat = .
+    cm = confusionMatrix(data = dat$data, reference = dat$reference)
+    tibble(Accuracy = cm$overall["Accuracy"],
+           Specificity = cm$byClass["Specificity"],
+           Sensitivity = cm$byClass["Sensitivity"],
+           n = nrow(dat) / N)
+  }) %>% 
+  ungroup() %>% 
+  mutate(month = factor(month, levels = 1:12, labels = month.abb))
+
+save(accuracy_month, file = "outputs/accuracy_month.RData")
+
+accuracy_month %>% ggplot() + geom_histogram(aes(Accuracy))
+
+ref_dat = tibble(dat_source = c("National Weather Service (Alaska)", "Water Survey of Canada"),
+                 accuracy = c(0.97, 0.94))
+accuracy_month_fig = accuracy_month %>% 
+  ggplot() + 
+  geom_bar(aes(x = month, y = Accuracy, fill = dat_source), stat = "identity", position = "dodge") +
+  # geom_hline(data = ref_dat, aes(yintercept = accuracy, linetype = dat_source), size = 1, alpha = 0.5) +
+  labs(
+    x = "Month",
+    y = "Accuracy",
+    fill = "Data source",
+    lty = "Overall accuracy"
+  ) +
+  coord_cartesian(expand = F, ylim = c(0, 1)) +
+  theme_bw()
+
+accuracy_month_fig
+
+accuracy_month_fig %>% 
+  ggsave(filename = "figs/accuracy_month.png",
+         width = 6.5,
+         height = 3,
+         dpi = "print")
+```
+
+
+### attach site data
+
+```{r}
+require(sf)
+sites_meta = st_read(dsn = "outputs/merged_val_stations.shp")
+
+accuracy_persite_sf = sites_meta %>% 
+  inner_join(accuracy_persite, by = c("id" = "mergedId"))
+
+require(mapview)
+
+mapview(accuracy_persite_sf, zcol = "Accuracy")
+
+st_write(accuracy_persite_sf, dsn = "outputs/accuracy_persite_sf_20190419.shp")
+
+validation_merged_sf = sites_meta %>% 
+  select(id) %>% 
+  inner_join(validation_merged, by = c("id" = "mergedId"))
+
+st_write(validation_merged_sf, dsn = "outputs/validation_merged_sf_20190419.shp")
+```
+
+<!-- ## confusion matrix -->
+
+<!-- ```{r} -->
+<!-- require(caret) -->
+<!-- predicted = factor(validation$fmask_snow >= 0.5, levels = c(T, F), labels = c("Ice-cover", "Ice-free")) -->
+<!-- reference = factor(validation$frozen, levels = c(T, F), labels = c("Ice-cover", "Ice-free")) -->
+<!-- confusionMatrix(data = predicted, reference = reference) -->
+<!-- ``` -->
+
+<!-- ## map of validation sites -->
+
+<!-- ```{r} -->
+<!-- validation_site_sf = validation %>%  -->
+<!--   group_by(id) %>%  -->
+<!--   summarise(lon = first(lon), -->
+<!--             lat = first(lat), -->
+<!--             n = n()) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   st_as_sf(coords = c("lon", "lat"), crs = 4326) -->
+
+<!-- mapview(validation_site_sf, zcol = "n") -->
+<!-- ``` -->
+
+
+
+<!-- ## errors per sites -->
+
+<!-- ```{r} -->
+<!-- error_metrics_perSite = validation %>%  -->
+<!--   # filter(fmask_clear <= 0.1) %>% -->
+<!--   # filter(fmask_n >= 30) %>%  -->
+<!--   # filter(fmask_cloud <= 0.01) %>% -->
+<!--   group_by(id) %>%  -->
+<!--   summarise(rmse = sqrt(mean((frozen - fmask_snow)^2)), -->
+<!--             mae = mean(abs(frozen - fmask_snow)), -->
+<!--             mbe = mean(fmask_snow - frozen), -->
+<!--             n = n()) %>%  -->
+<!--   ungroup() -->
+
+<!-- error_fig = error_metrics_perSite %>%  -->
+<!--   select(-n) %>%  -->
+<!--   gather(key = "errorType", value = "error", -id) %>%  -->
+<!--   ggplot() + -->
+<!--   geom_histogram(aes(error), binwidth = 0.05) + -->
+<!--   facet_wrap(~errorType, scales = "free_y") -->
+
+<!-- error_fig -->
+
+<!-- error_fig %>%  -->
+<!--   ggsave(filename = "figs/error_fig_NWS_alaska.png", -->
+<!--          width = 6, -->
+<!--          height = 5, -->
+<!--          dpi = "print") -->
+<!-- ``` -->
+
+
+
+
+<!-- ## divide by in-situ status -->
+
+<!-- ```{r} -->
+<!-- error_metrics_perSite_perStatus = validation %>%  -->
+<!--   # filter(fmask_clear <= 0.1) %>% -->
+<!--   # filter(fmask_n >= 30) %>% -->
+<!--   # filter(fmask_cloud <= 0.01) %>% -->
+<!--   group_by(lakeorriver, lakecode, frozen) %>%  -->
+<!--   summarise(rmse = sqrt(mean((frozen - fmask_snow)^2)), -->
+<!--             mae = mean(abs(frozen - fmask_snow)), -->
+<!--             mbe = mean(fmask_snow - frozen), -->
+<!--             n = n()) %>%  -->
+<!--   ungroup() -->
+
+<!-- error_fig_status = error_metrics_perSite_perStatus %>%  -->
+<!--   select(-n) %>%  -->
+<!--   gather(key = "errorType", value = "error", -lakecode, -lakeorriver, -frozen) %>%  -->
+<!--   ggplot() + -->
+<!--   geom_histogram(aes(error), binwidth = 0.05) + -->
+<!--   facet_grid(frozen~errorType, scales = "free_y") -->
+
+<!-- error_fig_status -->
+
+<!-- error_fig_status %>%  -->
+<!--   ggsave(filename = "figs/error_fig_status.png", -->
+<!--          width = 6, -->
+<!--          height = 5, -->
+<!--          dpi = "print") -->
+<!-- ``` -->
+
+<!-- ## overall errors  -->
+
+<!-- ```{r} -->
+<!-- error_metrics_overall = validation %>%  -->
+<!--   summarise(rmse = sqrt(mean((frozen - fmask_snow)^2)), -->
+<!--             mae = mean(abs(frozen - fmask_snow)), -->
+<!--             mbe = mean(fmask_snow - frozen)) -->
+
+<!-- error_metrics_overall -->
+<!-- ``` -->
+
+

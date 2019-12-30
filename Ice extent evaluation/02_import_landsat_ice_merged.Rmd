@@ -1,0 +1,59 @@
+---
+title: "import_landsat_ice_merged"
+author: "Xiao Yang"
+date: "3/5/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## import river ice data
+
+```{r}
+require(sf)
+require(tidyverse)
+
+dat = read_csv(file = "data/riverIceMergedStations0410.csv")
+
+read_list = function(t) {
+  n = nchar(t)
+  return(list(scan(text = substr(t, start = 2, stop = n - 1), dec = ",")))
+}
+
+read_list_vectorized = Vectorize(read_list)
+
+datFil = dat %>% 
+  mutate(fmaskList = read_list_vectorized(fmask)) %>% 
+  select(-fmask)
+
+save(datFil, file = "outputs/riverIceMerged0410.RData")
+
+load("outputs/riverIceMerged0410.RData", verbose = T)
+
+dat_summary = datFil %>% 
+  mutate(fmask_snow = map_dbl(fmaskList, function(x) {return(sum(x == 3) / (length(x) - sum(x == 2 | x == 4 | x == 0)))}),
+         fmask_cloud = map_dbl(fmaskList, function(x) {return(sum(x == 2 | x == 4) / length(x))}),
+         fmask_clear = map_dbl(fmaskList, function(x) {return(sum(x == 0) / (length(x)))}),
+         fmask_n = map_int(fmaskList, length)) %>% 
+  select(fmask_snow, 
+         fmask_cloud, 
+         fmask_clear,
+         fmask_n,
+         CLOUD_COVER,
+         LANDSAT_SCENE_ID,
+         id = id)
+
+dat_summary = dat_summary %>% 
+  mutate(doy = as.integer(substr(LANDSAT_SCENE_ID, start = 14, stop = 16)),
+         year = as.integer(substr(LANDSAT_SCENE_ID, start = 10, stop = 13)),
+         path = as.integer(substr(LANDSAT_SCENE_ID, start = 4, stop = 6)),
+         row = as.integer(substr(LANDSAT_SCENE_ID, start = 7, stop = 9)),
+         date = as.Date(doy, origin = paste0(year, "-01-01")))
+
+dat_summary = dat_summary %>% 
+  filter(!is.na(fmask_snow))
+
+save(dat_summary, file = "outputs/riverIceMerged_cleaned0410.RData")
+```

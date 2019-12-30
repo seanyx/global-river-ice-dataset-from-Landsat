@@ -1,0 +1,88 @@
+---
+title: "01_import_NWS_ice_data"
+author: "Xiao Yang"
+date: "2/5/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+require(tidyverse)
+require(sf)
+require(mapview)
+```
+
+```{r}
+fu = read_csv(file = "data/NWS_breakup_and_freezeup/Wayana/nws_freezeup_nogeo.csv")
+bu = read_csv(file = "data/NWS_breakup_and_freezeup/Wayana/nws_breakup_nogeo.csv")
+siteGeo = read_csv(file = "data/alaska_sites.csv")
+
+dateString = "%Y-%m-%d"
+fu = fu %>% 
+  transmute(id = as.character(id),
+            region = region,
+            river = river, 
+            atnr = atnr, 
+            location = location,
+            lid = lid,
+            siteID = as.character(siteID),
+            year = as.integer(year),
+            first_ice = as.Date(first_ice, dateString),
+            freezeup = as.Date(freezeup, dateString),
+            unsafe_boat = as.Date(unsafe_boat, dateString),
+            safe_man = as.Date(safe_man, dateString),
+            safe_veh = as.Date(safe_veh, dateString))
+
+bu = bu %>% 
+  transmute(id = as.character(id),
+            region = region,
+            river = river, 
+            atnr = atnr, 
+            location = location,
+            lid = lid,
+            siteID = as.character(siteID),
+            year = as.integer(year),
+            icemoved = as.Date(icemoved, dateString),
+            breakup = as.Date(breakup, dateString))
+
+fubu = fu %>% 
+  mutate(waterYear = year) %>% 
+  select(-year) %>% 
+  inner_join(bu %>% 
+               mutate(waterYear = year - 1), by = c("waterYear", "id")) %>% 
+  filter(region.x == region.y,
+         river.x == river.y,
+         atnr.x == atnr.y,
+         location.x == location.y,
+         siteID.x == siteID.y) %>% 
+  select(-region.x, -river.x, -location.x, -lid.x, -lid.y, -siteID.x, -siteID.y, -atnr.x) %>% 
+  rename(region = region.y, river = river.y, location = location.y, atnr = atnr.y)
+
+fubu = fubu %>% 
+  inner_join(siteGeo %>% select(-People) %>% rename(lon = Lon, lat = Lat), by = c("river", "atnr", "location")) %>% 
+  filter(!is.na(lon),
+         !is.na(lat),
+         LocationUncertain == "n") %>% 
+  filter(waterYear >= 1985)
+
+save(fubu, file = "outputs/NWS_alaska_river_ice.RData")
+```
+
+## Prepare data for river ice calculation from Landsat
+
+```{r}
+gee_input = fubu %>% 
+  group_by(id) %>% 
+  summarise(date1 = min(waterYear, na.rm = T),
+            date2 = max(waterYear, na.rm = T),
+            lon = first(lon),
+            lat = first(lat)) %>% 
+  ungroup() %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326)
+
+st_write(gee_input, dsn = "outputs/gee_input_river_ice_NWS.shp")
+```
+

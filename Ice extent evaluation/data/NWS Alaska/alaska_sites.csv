@@ -1,0 +1,178 @@
+river,atnr,location,Lon,Lat,nearConfluence,multiChannel,LocationUncertain,People,Note to self
+Buckland River,at,Buckland,-161.122383,65.979513,y,n,n,Wayana,
+Chatanika River,at,Chatanika,-147.457581,65.141005,n,n,n,Wayana,
+Chatanika River,at,Elliott Hwy Bridge,-147.725598,65.084478,n,n,y,Wayana,"Found where the highway crossed the river. The bridge wasn't named though. Borderline too small for landsat. Google Imagery was blurry, so it was hard to see if it was multi or single channe;/ "
+Chatanika River,at,Steese Highway,-147.25957,65.191645,n,y,y,Wayana,Found where the highway crossed the river. The bridge wasn't named though. Borderline too small for landsat
+Chena River,at,Fairbanks,-147.888415,64.826994,n,n,y,Wayana,
+Chilkat River,at,Klukwan,-135.896944,59.397776,n,n,n,Wayana,
+Chisana River,at,Northway,-141.806474,63.006252,n,n,y,Wayana,"Northway town is not on the Chisana river, it is on the Nabesna river. Northway Junction IS on the Chisana River. We assume they men Northway Junction"
+Colville River,at,Colville Village,-150.396394,70.42424,n,y,n,Wayana,In the middle of the Colville Delta
+Crooked Creek,at,Central,-144.801031,65.572481,n,n,n,Wayana,
+Deshka River,at,Willow,-150.320636,61.699858,y,n,y,Wayana,"Willow is not on the Deshka river, but it is sort of nearby, so we just place the pont near the mouth of the Deshka"
+Exit Creek,at,Exit Glacier,,,,,,Wayana,Too small
+Fortymile River,at,Taylor Hwy Bridge,-141.41335,64.308086,n,n,y,Wayana,Found where the highway crossed the river. The bridge wasn't named though. 
+Fortymile River,at,Mosquito Fork,-141.916454,64.054459,y,n,n,Wayana,River may be too narrow for landsat
+Fortymile River,at,South Fork,-141.755654,64.240102,y,n,y,Wayana,Could be the entire south fork of the river which is approx 20km. Confluence flag depends on location
+Fortymile River,at,Walker Fork,-141.363496,64.064066,n,y,y,Wayana,Poor image quality makes placing the pin challenging
+Fortymile River,at,West Fork,-142.238015,63.889765,n,n,y,Wayana,
+Gakona River,at,Gakona,-145.30303,62.302859,y,n,y,Wayana,
+Glacier Creek,at,Girdwood,-149.165795,60.939985,n,n,n,Wayana,
+Glacier Creek,nr,Seward,,,,,,Wayana,Glacker creek doesn't go near Seward at all
+Gulkana River,nr,Gakona,-145.383455,62.269095,?,n,y,Wayana,
+Hardenbourg Bay,at,Port Alsworth,-154.303802,60.206028,y,n,n,Wayana,Not a river. 
+Kenai River,at,Kenai Keys,-150.662022,60.498402,n,n,y,Wayana,
+Kenai River,at,Soldotna,-151.0623,60.48222,n,n,y,Wayana,
+Kennicott River,at,McCarthy,-142.943224,61.433315,y,y,y,Wayana,
+King Salmon Creek,at,King Salmon,-156.6988,58.69523,y,n,n,Wayana,
+Kobuk River,at,Ambler,-157.851196,67.084996,y,y,n,Wayana,
+Kobuk River,at,Kobuk,-156.888392,66.907516,n,n,n,Wayana,
+Kobuk River,at,Shungnak,-157.133058,66.888539,n,y,n,Wayana,
+Koyukuk River,at,Allakaket,-152.653169,66.565437,y,n,n,Wayana,
+Koyukuk River,at,Bettles,-151.521067,66.922648,n,n,n,Wayana,
+Koyukuk River,at,Hughes,-154.260215,66.048925,n,n,n,Wayana,
+Kuskokwim River,at,Akiak,-161.212467,60.911758,n,n,n,Wayana,
+Kuskokwim River,at,Aniak,-159.532742,61.583971,y,y,n,Wayana,
+Kuskokwim River,at,Bethel,-161.756561,60.790226,n,y,n,Wayana,
+Kuskokwim River,at,Crooked Creek,-158.125257,61.861085,n,n,n,Wayana,
+Kuskokwim River,at,McGrath,-155.588925,62.955039,n,n,n,Wayana,
+Little Susitna River,nr,Palmer,-150.174822,61.43772,n,n,y,Wayana,"Little Susitna river doesn't go particularly near palmer, so we use the location of the Litttle Susitna Piblic Use Facility"
+Little Susitna River,at,Houston,-149.817902,61.628618,n,n,n,Wayana,
+Matanuska River,at,Glacier Park Resort,-147.796452,61.794973,n,y,y,Wayana,
+Matanuska River,at,Palmer,-149.071799,61.60815,n,y,y,Wayana,
+Middle Fork Koyukuk,at,Wiseman,-150.106046,67.410713,y,n,n,Wayana,
+Montana Creek,at,Parks Highway,,,,,,Wayana,Too small for Landsat
+Naknek River,at,King Salmon,-156.674798,58.678752,n,n,n,Wayana,
+Nenana River,at,Rex Bridge,-149.280553,64.218491,n,n,n,Wayana,
+Newhalen River,nr,Nondalton,-154.841392,59.969854,n,n,n,Wayana,
+Ninilchik River,at,Ninilchik,-151.66867,60.05096,y,n,y,Wayana,
+OBrien Creek,at,Fortymile,,,,,,Wayana,Too small for Landsat
+Port Alsworth,at,Port Alsworth,-154.310285,60.202803,y,n,n,Wayana,Not a river
+Resurrection River,at,Seward,-149.419735,60.142467,?,y,y,Wayana,
+Skagway River,at,Skagway,-135.305823,59.465377,y,y,y,Wayana,
+Skwentna River,at,Skwentna,-151.221551,61.96715,n,y,y,Wayana,
+Snake River,at,Nome,-165.449935,64.505734,n,n,y,Wayana,"The Snake River runs through Nome and by the Airport, so it was a little hard to pick a spot. "
+Snow River,nr,Seward,-149.35511,60.302981,n,y,y,Wayana,"The Snow river doesn't go particularly near Seward, so we picked a place where the Snow river is next to the Seward Highway"
+Susitna River,at,Alexander Creek,-150.596946,61.412204,y,y,n,Wayana,
+Susitna River,at,Sunshine,-150.173651,62.176498,n,y,y,Wayana,"Sunshine is not on the Susitna, it is a ways off, so I had to estimate..."
+Taiya River,nr,Skagway,-135.347247,59.500074,y,y,y,Wayana,"Taiya River is near but not next to Skagway, so it is hard to place the point."
+Talkeetna River,at,Talkeetna,-150.118116,62.325937,y,y,n,Wayana,"Most of the river is very braided, but the very small section that goes by Talkeetna is not, I am still going to flag as braided just in case the location is slightly off. "
+Tanana River,at,Big Delta,-145.847309,64.157005,y,n,n,Wayana,
+Tanana River,at,Fairbanks D-S of Chena R,-147.955863,64.787253,y,y,n,Wayana,
+Tanana River,nr,Manley Hot Springs,-150.670177,64.970132,n,y,n,Wayana,
+Tanana River,at,Tanacross,-143.343021,63.386037,n,n,n,Wayana,
+Tanana River,at,West End Chena Ridge,-148.062821,64.747936,n,n,n,Wayana,
+Tonsina River,at,Tonsina,-145.181314,61.662934,n,n,y,Wayana,"Tosina isn't actually on the Tosina River, but the Tosina Airport is by the Tosina River, so I used that location"
+Trail River,nr,Lawing,-149.376606,60.422624,n,n,y,Wayana,"Lawing isn't on the Trail RIver, so it is hard to know where to put the point"
+Wasilla Creek,at,Wasilla,-149.248524,61.604013,n,n,y,Wayana,"a. Definitely too small to see in Landsat b. The creek winds its way through the whole town of Wasilla, so picking a location is challenging"
+Willow Creek,at,Willow,-149.99526,61.769763,n,y,y,Wayana,
+Wiseman Creek,at,Wiseman,-150.110376,67.410102,y,n,n,Wayana,
+Yentna River,at,Lake Creek,-150.90983,61.903842,y,y,n,Wayana,
+Yukon River,at,Anvik,-160.192564,62.662267,n,y,n,Wayana,
+Yukon River,at,Beaver,-147.396404,66.357342,n,y,n,Wayana,
+Yukon River,at,Circle,-144.057746,65.826766,n,y,n,Wayana,
+Yukon River,at,Eagle,-141.198231,64.788659,n,y,n,Wayana,
+Yukon River,at,Fort Yukon,-145.285634,66.557549,y,y,n,Wayana,
+Yukon River,at,Fortuna Ledge,-162.093904,61.877631,n,y,y,Wayana,"Assuming that the Fortuna Ledge store is in Marshall, AK"
+Yukon River,at,Galena,-156.933515,64.730331,n,n,n,Wayana,
+Yukon River,at,Mountain Village,-163.727861,62.080415,n,n,n,Wayana,
+Yukon River,at,Nulato,-158.100456,64.715495,n,y,n,Wayana,
+Yukon River,at,Ruby,-155.496386,64.74096,n,n,n,Wayana,
+Yukon River,at,Russian Mission,-161.310107,61.785302,n,n,n,Wayana,
+Yukon River,at,Tanana,-152.083273,65.166278,y,y,n,Wayana,
+Chester Creek,at,Arctic Blvd. Anchorage,-149.898373,61.204765,n,n,n,Wayana,Too small to see in landsat
+Nushagak River,at,Ekwok,-157.470314,59.349516,n,n,n,Wayana,
+Anchor River,at,Anchor Point,-151.835497,59.772359,y,n,n,Wayana,
+Chistochina River,at,Chistochina,-144.640382,62.602947,y,y,y,Wayana,"Chistochina the town is actually on the Copper RIver, but upstream at a highway crossing nearby is the Chistochina River"
+Maclaren River,at,Denali Hwy,-146.531024,63.120588,n,y,n,Wayana,Borderline visible in Landsat
+Kobuk River,at,Kiana,-160.428832,66.969695,y,y,n,Wayana,
+Koyukuk River,at,Huslia,-156.3955,65.696524,n,n,n,Xiao,
+Kuskokwim River,at,Kalskag,-160.335429,61.531803,n,n,n,Xiao,
+Little Nelchina River,at,Nelchina,-146.890696,61.979026,n,n,y,Xiao,"Nelchina is not close to the river, and the river might be too narrow for Landsat"
+Noatak River,at,Noatak,-162.935721,67.569916,n,y,y,Xiao,
+Nabesna River,nr,Northway,-141.963889,62.963891,n,n,y,Xiao,
+Kroto Creek,at,Oilwell Road,-150.538762,62.132806,n,n,n,Xiao,too small to include (~30 m)
+Moose Creek,at,Oilwell Road,-150.443633,62.228834,n,n,n,Xiao,too small to include (<30 m)
+Kuskokwim River,at,Napaimute,-158.73861,61.53087,n,n,n,Xiao,close to the airfield
+Eyak River,nr,Cordova,-145.644499,60.530767,y,n,y,Xiao,ask Tamlin; close to lake; location uncertain;
+Black River,at,Chalkyitsik,-143.7192,66.654726,n,n,n,Xiao,might be too small (~90m)
+Kandik River,at,Mile 50,,,,,,Xiao,couldn't find Mile 50; too small
+Colville River,at,Umiat,-152.14225,69.354151,n,n,n,Xiao,
+Kuparuk River,at,Kuparuk,,,n,y,y,Xiao,ask Tamlin; couldn't find Kuparuk
+Fish River,at,White Mountain,-163.409816,64.679417,n,n,y,Xiao,ask Tamlin: only found Niukluk
+Kobuk River,at,Noorvik,-161.031768,66.837934,n,y,n,Xiao,
+Kotzebue Sound,at,Kotzebue,,,,,,Xiao,not a river
+Meade River,at,Atkasuk,-157.405921,70.481517,n,n,n,Xiao,
+Noatak River,at,Fish Hatchery,,,,,,Xiao,ask Tamlin: couldn't find the Hatchery
+Sagavanirktok River,at,Deadhorse,-148.390557,70.198176,n,y,n,Xiao,
+Sagavanirktok River,at,Prudhoe,-148.302864,70.250678,n,y,n,Xiao,
+Selawik River,at,Selawik,-160.007615,66.602892,y,n,n,Xiao,
+Copper River,nr,Chitina,-144.40786,61.514,y,n,n,Xiao,
+Copper River,at,Copper Center,-145.28453,61.954908,y,n,n,Xiao,
+Copper River,at,Gakona,-145.308318,62.298025,y,y,n,Xiao,
+Copper River,nr,Gulkana,-145.400855,62.165204,n,y,n,Xiao,
+Gulkana River,at,Sourdough,-145.531683,62.521685,n,n,n,Xiao,
+Gakona River,at,Gulkana,-145.307438,62.301473,y,n,n,Xiao,ask Tamlin: is this the same as copper river at Gakona?
+Chester Creek,at,Gambell Anchorage,,,,,,Xiao,too small
+Deshka River,at,Big Susitna,-150.319798,61.699024,y,n,y,Xiao,ask Tamlin: where is Big Susitna
+Eagle River,at,Eagle River,-149.574266,61.309186,n,n,n,Xiao,
+Matanuska River,at,Sutton,-148.878794,61.708007,n,y,n,Xiao,
+Susitna River,at,Gold Creek,-149.6935,62.767933,n,n,n,Xiao,
+Susitna River,at,Montana Creek,-150.083762,62.098795,n,y,n,Xiao,
+Susitna River,at,Susitna Landing,-150.108426,61.915391,n,y,n,Xiao,
+Susitna River,at,Susitna Station,,,,,,Xiao,ask Tamlin: couldn't find Susitna Station
+Susitna River,at,Yentna River,-150.47364,61.562788,y,y,n,Xiao,
+Yentna River,at,Big Bend,-150.652177,61.740903,n,n,n,Xiao,
+Yentna River,at,Fish Creek,-150.512243,61.60376,y,n,y,Xiao,ask Tamlin: fish creek is very close to susitna and it doesn't go into Yentna
+Yentna River,at,Susitna,-150.472091,61.583477,y,n,n,Xiao,
+Westchester Lagoon,at,NA,,,,,,Xiao,not a river
+Alexander Creek,at,Mouth,-150.598089,61.412823,y,n,n,Xiao,is probably the same as Susitna River at Alexander Creek
+Montana Creek,nr,Auke Bay,,,,,y,Xiao,"too small; located Montana Creek by Susitna River, couldn't find Auke Bay"
+Crooked Creek,at,Crooked Creek,,,,,,Xiao,too small;
+Kuskokwim River,at,Akiachak,-161.450322,60.907177,n,n,n,Xiao,
+Kuskokwim River,at,Chuathbaluk,-159.248008,61.568603,n,n,n,Xiao,
+Kuskokwim River,at,Napakiak,-161.961207,60.689128,n,y,n,Xiao,
+Kuskokwim River,at,Nikolai,-154.375651,63.010653,n,n,n,Xiao,
+Kuskokwim River,at,Red Devil,-157.350377,61.791578,n,n,n,Xiao,
+Kuskokwim River,at,Sleetmute,-157.177072,61.703745,n,n,n,Xiao,
+Kuskokwim River,at,Stony River,-156.595108,61.788518,n,y,y,Xiao,not knowing exact location of observations
+Kuskokwim River,at,Tuluksak,-160.990525,61.104004,n,n,n,Xiao,
+Kuskokwim River,at,Tuntatuliak,-162.488878,60.31046,n,n,n,Xiao,
+Newhalen River,at,near,,,,,,Xiao,couldn't find near
+Stony River,at,Stony River Lodge,,,,,,Xiao,Stony River Lodge is not close to Stony River
+Kuskokwim River,at,Kwethluk,-161.455476,60.812445,n,y,n,Xiao,
+Kvichak River,at,Iguigig,,,,,,Xiao,
+Kuskokwim River,at,Napaskiak,-161.775975,60.713074,n,n,n,Xiao,
+Kuskokwim River,at,Oscarville,-161.764872,60.71796,n,n,n,Xiao,very close to Napaskiak
+Chena River,at,38mile Chena Hot Sp. Road,-146.086336,65.067682,n,n,n,Xiao,might be too small
+Delta River,at,Big Delta,-145.855315,64.15096,y,n,n,Xiao,
+Salcha River,at,Gravel Bar,,,,,,Xiao,ask Tamlin: couldn't find Gravel Bar
+Salcha River,at,Richardson Highway Bridge,-146.932046,64.46899,n,n,n,Xiao,
+Tanana River,at,Nenana,-149.091607,64.56616,y,n,n,Xiao,
+Chena River,at,Fairbanks (Pikes),-147.852372,64.835407,n,n,n,Xiao,
+Nenana River,at,Tanana,-152.099313,65.154134,y,y,y,Xiao,does Nenana river goes to the Tanana (not the river)
+Tanana River,at,Cathedral Bluffs,-143.741811,63.388268,n,n,n,Xiao,
+Nenana River,at,Healy,,,,,,Xiao,may be too small for Landsat
+Salcha River,at,Johnsons,-148.96456,63.873377,n,n,n,Xiao,
+Klondike River,at,Dawson,-139.435102,64.050864,y,n,n,Xiao,
+Koyukuk River,at,Wiseman,-150.105781,67.410297,n,n,n,Xiao,
+Kwiguk Pass,at,Emmonak,-164.566046,62.772844,n,y,n,Xiao,
+Nulato River,at,Nulato,-158.130598,64.692235,y,n,y,Xiao,ask Tamlin: couldn't find the Nulato River
+Porcupine River,nr,Fort Yukon,-145.298228,66.593921,y,n,n,Xiao,
+Yukon River,at,Alakanuk,-164.591791,62.677211,n,n,n,Xiao,
+Yukon River,at,Dalton Hwy Bridge,-149.720417,65.87539,n,n,n,Xiao,
+Yukon River,at,Dawson,-139.441213,64.061403,n,n,n,Xiao,
+Yukon River,nr,Emmonak,-164.485515,62.75631,y,n,n,Xiao,
+Yukon River,at,Grayling,-160.050614,62.898244,n,n,n,Xiao,
+Yukon River,at,Holy Cross,-159.73832,62.207439,n,n,n,Xiao,
+Yukon River,at,Kaltag,-158.712357,64.32644,n,n,n,Xiao,
+Yukon River,at,Koyukuk,-157.728727,64.868233,n,n,n,Xiao,
+Yukon River,at,Marshall,-162.115035,61.858388,n,n,n,Xiao,
+Yukon River,at,Pilot Station,-162.874018,61.934771,n,n,n,Xiao,
+Yukon River,at,Pitkas Point,-163.295591,62.02866,n,n,n,Xiao,
+Yukon River,at,Rampart,-150.175911,65.507888,n,n,n,Xiao,
+Yukon River,at,Stevens Village,-149.116084,66.003831,n,n,n,Xiao,
+Fortymile River,at,NA,,,,,,Xiao,no location
+Yukon River,at,Hughes,,,,,,Xiao,ask Tamlin: Hughes is not on Yukon River
+Tanana River,at,Northway,,,,,,Xiao,ask Tamlin: Tanana does not pass Northway
+Tanana River,at,Salcha,-147.067402,64.556262,n,y,n,Xiao,
+Knik River,nr,Eklutna Project,-149.182137,61.489397,y,y,n,Xiao,river might be too small

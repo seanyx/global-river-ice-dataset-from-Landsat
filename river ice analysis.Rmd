@@ -1811,11 +1811,17 @@ extentsfc_sh = st_sfc(extentply, crs = 4326)
 world = st_as_sf(maps::map(database = "world", fill = T, plot = F))
 world = world %>% st_buffer(0.0)
 
-world_clipped_nh_land = world %>% 
-  st_intersection(extentsfc_nh)
+# world_clipped_nh_land = world %>% 
+#   st_intersection(extentsfc_nh)
+# 
+# world_clipped_sh_land = world %>% 
+#   st_intersection(extentsfc_sh)
 
-world_clipped_sh_land = world %>% 
-  st_intersection(extentsfc_sh)
+world_clipped_nh_land = world %>% 
+  st_difference(extentsfc_sh)
+
+world_clipped_sh_land = world %>%
+  st_difference(extentsfc_nh)
 
 plot(world_clipped_nh_land)
 plot(world_clipped_sh_land)
